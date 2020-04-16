@@ -153,10 +153,6 @@ plot.eda.map
 plot.eda.nclaims
 plot.eda.amount
 
-# plotting the frequency by gender (*)
-freq_by_sex
-g2
-
 # GLM model selection (without commune and expo)
 # freq_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+offset(lnexpo), family = poisson(link = "log"), confsetsize = 200, crit = bic, data = DB, intercept=FALSE, level=1, plotty=TRUE, report=TRUE, method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7)
 # After 550 generations:
@@ -171,6 +167,10 @@ plot(freq_GLM, type = "r")
 
 F_GLM=glm(nbrtotc~-1+agecar+fuelc+split+lat+ageph+offset(lnexpo), data=DB, fam = poisson(link = log))
 summary(F_GLM)
-plot(DB$nbrtotc, F_GLM$fitted.values, xlab = "Observed Claims", ylab = "Fitted Values")
-abline(lm(F_GLM$fitted ~ DB$nbrtotc), col="dark blue", lwd=2)
-####
+box1 = ggplot(DB, aes(group=nbrtotc, F_GLM$fitted.values)) + geom_boxplot() + xlab("Claims") + 
+  geom_abline()
+
+box1
+
+
+
