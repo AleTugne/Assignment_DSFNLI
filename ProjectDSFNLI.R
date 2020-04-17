@@ -154,21 +154,22 @@ plot.eda.nclaims
 plot.eda.amount
 
 # GLM model selection (without commune and expo)
-# freq_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+offset(lnexpo), family = poisson(link = "log"), confsetsize = 200, crit = bic, data = DB, intercept=FALSE, level=1, plotty=TRUE, report=TRUE, method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7)
+# freq_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+offset(lnexpo), family = poisson(link = "log"), confsetsize = 200, crit = bic, data = DB, intercept=TRUE, level=1, plotty=TRUE, report=TRUE, method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7)
 # After 550 generations:
-# Best model: nbrtotc~-1+agecar+fuelc+split+lat+ageph
+# Best model: nbrtotc~agecar+fuelc+split+lat+ageph
 # Crit= 127019.247424733
 # Mean crit= 127387.616469234
 # Improvements in best and average IC have bebingo en below the specified goals.
 # Algorithm is declared to have converged.
 # Completed.
-summary(freq_GLM)
-plot(freq_GLM, type = "r")
+# summary(freq_GLM)
+# plot(freq_GLM, type = "r")
 
-F_GLM=glm(nbrtotc~-1+agecar+fuelc+split+lat+ageph+offset(lnexpo), data=DB, fam = poisson(link = log))
+F_GLM=glm(nbrtotc~agecar+fuelc+split+lat+ageph+offset(lnexpo), data=DB, fam = poisson(link = log))
 summary(F_GLM)
-box1 = ggplot(DB, aes(group=nbrtotc, F_GLM$fitted.values)) + geom_boxplot() + xlab("Claims") + 
-  geom_abline()
+box1 = ggplot(DB, aes(F_GLM$fitted.values, group=nbrtotc)) + 
+        geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
+        xlab("Claims") + ylab("Fitted Values")+coord_flip()
 
 box1
 
