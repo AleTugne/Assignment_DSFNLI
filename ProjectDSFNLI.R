@@ -153,18 +153,19 @@ plot.eda.map
 plot.eda.nclaims
 plot.eda.amount
 
-# GLM model selection (without commune and expo)
-# freq_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+offset(lnexpo), family = poisson(link = "log"), confsetsize = 200, crit = bic, data = DB, intercept=TRUE, level=1, plotty=TRUE, report=TRUE, method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7)
-# After 550 generations:
-# Best model: nbrtotc~agecar+fuelc+split+lat+ageph
-# Crit= 127019.247424733
-# Mean crit= 127387.616469234
-# Improvements in best and average IC have bebingo en below the specified goals.
-# Algorithm is declared to have converged.
-# Completed.
-# summary(freq_GLM)
-# plot(freq_GLM, type = "r")
+### GLM model selection (without commune and expo)
+### freq_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+offset(lnexpo), family = poisson(link = "log"), confsetsize = 200, crit = bic, data = DB, intercept=TRUE, level=1, plotty=TRUE, report=TRUE, method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7)
+### After 550 generations:
+### Best model: nbrtotc~agecar+fuelc+split+lat+ageph
+### Crit= 127019.247424733
+### Mean crit= 127387.616469234
+### Improvements in best and average IC have bebingo en below the specified goals.
+### Algorithm is declared to have converged.
+### Completed.
+### summary(freq_GLM)
+### plot(freq_GLM, type = "r")
 
+# Resulting model + representation of fitted values for each claim class
 F_GLM=glm(nbrtotc~agecar+fuelc+split+lat+ageph+offset(lnexpo), data=DB, fam = poisson(link = log))
 summary(F_GLM)
 box1 = ggplot(DB, aes(F_GLM$fitted.values, group=nbrtotc)) + 
@@ -173,5 +174,7 @@ box1 = ggplot(DB, aes(F_GLM$fitted.values, group=nbrtotc)) +
 
 box1
 
+# Analysis of deviance
+anova(F_GLM, test="Chisq")
 
 
