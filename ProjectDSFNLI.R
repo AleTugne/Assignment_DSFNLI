@@ -7,6 +7,7 @@ library(rgdal)
 library(mapview)
 library(sf)
 library(tmap)
+library(caret)
 library(gridExtra)
 library(rgeos)
 library(mapview)
@@ -176,5 +177,29 @@ box1
 
 # Analysis of deviance
 anova(F_GLM, test="Chisq")
+
+# Let's calculate the RMSE to compare the different models
+mse <- function(sm) 
+  mean(sm$residuals^2)
+
+RMSE_GLM = sqrt(mse(F_GLM))
+
+### Cross validation approaches to GLM using {caret}
+## 1 - Validation Set Approach
+# Split the data into training (80%) and test (20%) set 
+set.seed(123)
+training.samples <- DB$nbrtotc %>% createDataPartition(p = 0.8, list = FALSE)
+train.data  <- DB[training.samples, ]
+test.data <- DB[-training.samples, ]
+g5 <- ggplot(train.data, aes(x = nbrtotc)) + theme_bw() +
+  geom_density(trim = TRUE) +
+  geom_density(data = test.data, trim = TRUE, col = "red") +
+  theme(axis.title.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank()) +
+  ggtitle("Caret splitting") 
+g5
+
+# Re-calculate the GLM using the 
 
 
