@@ -178,11 +178,11 @@ box1
 # Analysis of deviance
 anova(F_GLM, test="Chisq")
 
-# Let's calculate the RMSE to compare the different models
-mse <- function(sm) 
-  mean(sm$residuals^2)
-
-RMSE_GLM = sqrt(mse(F_GLM))
+# Let's calculate the R2, RMSE and MAE to compare the different models
+predictions1 <- F_GLM %>% predict(DB)
+data.frame( R2 = R2(predictions1, DB$nbrtotc),
+            RMSE = RMSE(predictions1, DB$nbrtotc),
+            MAE = MAE(predictions1, DB$nbrtotc))
 
 ### Cross validation approaches to GLM using {caret}
 ## 1 - Validation Set Approach
@@ -191,15 +191,44 @@ set.seed(123)
 training.samples <- DB$nbrtotc %>% createDataPartition(p = 0.8, list = FALSE)
 train.data  <- DB[training.samples, ]
 test.data <- DB[-training.samples, ]
-g5 <- ggplot(train.data, aes(x = nbrtotc)) + theme_bw() +
-  geom_density(trim = TRUE) +
-  geom_density(data = test.data, trim = TRUE, col = "red") +
-  theme(axis.title.y = element_blank(),
-        axis.ticks.y = element_blank(),
-        axis.text.y = element_blank()) +
-  ggtitle("Caret splitting") 
+
+g5 <- ggplot(train.data, aes(x = nbrtotc)) + theme_bw() + geom_density(trim = TRUE) +
+        geom_density(data = test.data, trim = TRUE, col = "red") + 
+        theme(axis.title.y = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank()) +
+        ggtitle("Caret splitting") 
 g5
 
-# Re-calculate the GLM using the 
+F_GLM2 <- glm(nbrtotc~agecar+fuelc+split+lat+ageph+offset(lnexpo), data=train.data, fam = poisson(link = log))
 
+# Make predictions and compute the R2, RMSE and MAE
+predictions2 <- F_GLM2 %>% predict(test.data)
+data.frame( R2 = R2(predictions2, test.data$nbrtotc),
+            RMSE = RMSE(predictions2, test.data$nbrtotc),
+            MAE = MAE(predictions2, test.data$nbrtotc))
+
+# So, in this case the F_GLM remain the best (RMSE --> 2.436933 vs. 2.446796)
+
+## 2 - 5-Fold Cross Validation
+set.seed(123) 
+train.control <- trainControl(method = "cv", number = 5, returnResamp = "all", selectionFunction = "best")
+hyper_grid <- expand.grid(k = seq(2, 2000, by = 2))
+# Train the model
+F_GLM3 <- train(nbrtotc~agecar+fuelc+split+lat+ageph+offset(lnexpo), data = DB, method = "knn", family = poisson(link = log),
+               trControl = train.control, tuneGrid = hyper_grid, metric = "Accuracy")
+# Summarize the results
+print(F_GLM3)
+
+
+#ggplot() + theme_bw() +
+#  geom_line(data = knn_fit$results, aes(k, RMSE)) +
+#  geom_point(data = knn_fit$results, aes(k, RMSE)) +
+#  geom_point(data = filter(knn_fit$results, k == as.numeric(knn_fit$bestTune)),
+#             aes(k, RMSE),
+#             shape = 21,
+#             fill = "yellow",
+#             color = "black",
+#             stroke = 1,
+#             size = 3) +
+#  scale_y_continuous("Error (RMSE)")
+# Define training control
 
