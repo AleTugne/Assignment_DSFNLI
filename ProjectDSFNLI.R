@@ -162,20 +162,15 @@ plot.eda.map
 plot.eda.nclaims
 plot.eda.amount
 
-## GLM model selection (without commune, codposs, INS and expo) --> Cross validation approaches to GLM using {caret} + glmulti wrt BIC selection (with zero-inflated method for chargtot)
-# Validation Set Approach --> Split the data into training (80%) and test (20%) set
+### Now, given the high proportion of 0, we will compare the best Cross-Validated 
+### (using glmulti and Validation approach with {caret}, splitting the data into training (80%) and test (20%) set) 
+### Poisson GLM model with the best Cross-Validated Zero-Inflated Poisson Model by analyzing overdispersion of data
+
+# Let's define the training and test data that will be used from now on
 set.seed(123)
 training.samples <- DB$nbrtotc %>% createDataPartition(p = 0.8, list = FALSE)
 train.data  <- DB[training.samples, ]
 test.data <- DB[-training.samples, ]
-
-zeroinfl.glmulti=function(formula, data, inflate = "|1",...) {
-  zeroinfl(as.formula(paste(deparse(formula), inflate)),data=data,...)
-}
-
-freq_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+chargtot+offset(lnexpo), fitfunc=zeroinfl.glmulti, inflate="|1", confsetsize = 200, data = train.data, intercept=TRUE, level=1, plotty=TRUE, report=TRUE, , method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7, family = poisson(link = "log"))
-summary(freq_GLM)
-plot(freq_GLM, type = "r")
 
 g6 <- ggplot(train.data, aes(x = nbrtotc)) + theme_bw() + geom_density(trim = TRUE) +
   geom_density(data = test.data, trim = TRUE, col = "red") + 
@@ -183,74 +178,41 @@ g6 <- ggplot(train.data, aes(x = nbrtotc)) + theme_bw() + geom_density(trim = TR
   ggtitle("Caret splitting") 
 g6
 
-#freq_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+chargtot+offset(lnexpo), family = poisson(link = "log"), confsetsize = 200, crit = bic, data = train.data, intercept=TRUE, level=1, plotty=TRUE, report=TRUE, method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7)
-#summary(freq_GLM)
-#plot(freq_GLM, type = "r")
-# After 740 generations:
-# Best model: nbrtotc~1+fuelc+split+lat+ageph+chargtot
-# Crit= 101032.907291056
-# Mean crit= 101294.960104771
-# Improvements in best and average IC have bebingo en below the specified goals.
-# Algorithm is declared to have converged.
-# Completed.
+## 1 - Classical Poisson Model (without commune, INS, codeposs and chargtot because the latter is deterministic wrt nbrtotc)
+C_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+offset(lnexpo), family = poisson(link = "log"), confsetsize = 200, crit = bic, data = train.data, intercept=TRUE, level=1, plotty=TRUE, report=TRUE, method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7)
+# summary(Classical_GLM)
+# plot(freq_GLM, type = "r")
 
-# Resulting model + representation of fitted values for each claim class
-F_GLM=glm(nbrtotc~1+fuelc+split+lat+ageph+chargtot+offset(lnexpo), data=train.data, fam = poisson(link = log))
-summary(F_GLM)
-box1 = ggplot(train.data, aes(F_GLM$fitted.values, group=nbrtotc)) + 
+#After 400 generations:
+#Best model: nbrtotc~1+fuelc+split+lat+ageph
+#Crit= 101441.988027927
+#Mean crit= 101737.199031362
+#Improvements in best and average IC have bebingo en below the specified goals.
+#Algorithm is declared to have converged.
+#Completed
+
+C_Poi=glm(nbrtotc~1+fuelc+split+lat+ageph+offset(lnexpo), data=train.data, fam = poisson(link = log))
+summary(C_Poi)
+
+# representation of fitted values (predictions) for each claim class
+fitted_C_Poi = C_Poi %>% fitted(test.data)
+box1 = ggplot(train.data, aes(group=nbrtotc, exp(fitted_C_Poi))) + 
   geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
   xlab("Claims") + ylab("Fitted Values")+coord_flip()
-  
+
 box1
 
-# Make predictions and compute the R2, RMSE and MAE
-predictions2 <- F_GLM2 %>% predict(test.data)
-
-
-# Analysis of deviance
-#anova(F_GLM, test="Chisq")
-
-
-# So, in this case the F_GLM remain the best (RMSE --> 2.436933 vs. 2.446796)
-
-## 2 - 5-Fold Cross Validation
-#set.seed(123) 
-#train.control <- trainControl(method = "cv", number = 10, returnResamp = "all", selectionFunction = "best")
-#hyper_grid <- expand.grid(k = seq(2, 10, by = 2))
-# Train the model
-#F_GLM3 <- train(nbrtotc~agecar+fuelc+split+lat+ageph+offset(lnexpo), data = DB, method = "lvq", trControl = train.control, 
-                #tuneGrid = hyper_grid)
-# Summarize the results
-#print(F_GLM3)
-#plot(F_GLM3)
-
-
-#ggplot() + theme_bw() +
-#  geom_line(data = knn_fit$results, aes(k, RMSE)) +
-#  geom_point(data = knn_fit$results, aes(k, RMSE)) +
-#  geom_point(data = filter(knn_fit$results, k == as.numeric(knn_fit$bestTune)),
-#             aes(k, RMSE),
-#             shape = 21,
-#             fill = "yellow",
-#             color = "black",
-#             stroke = 1,
-#             size = 3) +
-#  scale_y_continuous("Error (RMSE)")
-# Define training control
+# Check for over/underdispersion in the model
+E2 <- resid(C_Poi, type = "pearson")
+N  <- nrow(train.data)
+p  <- length(coef(C_Poi))   
+sum(E2^2) / (N - p) 
+# 1.196218 <--- Poor overdispersion... Indeed the Poisson family has dispersion parameter = 1. 
+# We can actually try to reduce it by using mixed models as the Zero Inflated Model
+# but actually we can conclude that the GLM is not so efficient to fit the data, so we will use machine learning
+# techniques to improve the fit
 
 
 
-
-
-
-
-round(runif(100, 0,20)*round(runif(100)))-> vy2
-
-
-
-
-
-
-
-
-
+   
+              
