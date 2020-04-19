@@ -1,6 +1,7 @@
 # --------------------------- 0. Setup --------------------------------------
 
 # Importing libraries
+library(pscl)
 library(glmulti)
 library(tidyverse)
 library(rgdal)
@@ -45,13 +46,20 @@ DB = DB %>% rename_all(function(.name) {
   .name %>% tolower 
 })
 DB = rename(DB, expo = duree)
-
-
 DB %>% slice(1:3) 
 
 # Some analysis
-mean(DB$nbrtotc)
+# Let us count the proportion of 0 in chargtot, lnexpo and nbrtotc
+100*sum(DB$chargtot == 0)/nrow(DB)  #88%
+g1=ggplot(DB, aes(chargtot)) + geom_histogram(bins=100) + scale_y_log10()
+g1
+100*sum(DB$lnexpo == 0)/nrow(DB)  #77%
+100*sum(DB$nbrtotc == 0)/nrow(DB)  #88%
 
+# From here we can see that the number of 0 is important, so we have to think about switching from a 
+# Poisson GLM to a Zero-Inflated Poisson GLM
+
+mean(DB$nbrtotc)
 mean = sum(DB$nbrtotc)/sum(DB$expo)
 mean
 variance = sum((DB$nbrtotc - mean * DB$expo)^2)/sum(DB$expo)
@@ -62,17 +70,17 @@ freq_by_sex = DB %>% group_by(sexp) %>% summarize(emp_freq = sum(nbrtotc) / sum(
 freq_by_age = DB %>% group_by(ageph) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
 
 # Some graphs
-g1 = ggplot(freq_by_age, aes(x = ageph, y = emp_freq)) + theme_bw() + 
+g2 = ggplot(freq_by_age, aes(x = ageph, y = emp_freq)) + theme_bw() + 
   geom_bar(stat = "identity", color = "red",
            fill = "orange", alpha = .5) + 
   ggtitle("MTPL - empirical claim freq per age policyholder")
-g1
+g2
 
-g2 = ggplot(freq_by_sex, aes(x = sexp, y = emp_freq)) + theme_bw() +
+g3 = ggplot(freq_by_sex, aes(x = sexp, y = emp_freq)) + theme_bw() +
   geom_bar(stat = "identity", color = "red", 
            fill = "orange", alpha = .5) + 
   ggtitle("MTPL - empirical claim freq per sex policyholder")
-g2
+g3
 
 col = "red"
 fill = "orange"
@@ -98,8 +106,8 @@ plot.eda.amount = ggplot(data = DB.sev, aes(chargtot)) +
   geom_density(adjust = 3, col = col, fill = fill, alpha = 0.5) + 
   xlim(0, 1e4) + ylab(ylab) + xlab("severity") + theme_bw()
 
-g3 = grid.arrange(plot.eda.nclaims, plot.eda.exp, plot.eda.amount)
-g3
+g4 = grid.arrange(plot.eda.nclaims, plot.eda.exp, plot.eda.amount)
+g4
 
 plot.eda.fuel = ggplot.bar(DB, DB$fuelc, "fuel")
 plot.eda.sex = ggplot.bar(DB, DB$sexp, "sex")
@@ -110,8 +118,8 @@ DB$agecar = factor(DB$agecar, ordered = TRUE, levels = c("0-1", "2-5", "6-10", "
 plot.eda.agecar = ggplot.bar(DB, DB$agecar, "agec")
 plot.eda.ageph = ggplot.hist(DB, DB$ageph, "ageph", 1)
 
-g4 = grid.arrange(plot.eda.fuel, plot.eda.sex, plot.eda.use, plot.eda.split, plot.eda.ageph, plot.eda.agecar)
-g4
+g5 = grid.arrange(plot.eda.fuel, plot.eda.sex, plot.eda.use, plot.eda.split, plot.eda.ageph, plot.eda.agecar)
+g5
 
 #---------------------------- 2. Spatial Data ------------------------------
 
@@ -154,69 +162,67 @@ plot.eda.map
 plot.eda.nclaims
 plot.eda.amount
 
-### GLM model selection (without commune and expo)
-### freq_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+offset(lnexpo), family = poisson(link = "log"), confsetsize = 200, crit = bic, data = DB, intercept=TRUE, level=1, plotty=TRUE, report=TRUE, method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7)
-### After 550 generations:
-### Best model: nbrtotc~agecar+fuelc+split+lat+ageph
-### Crit= 127019.247424733
-### Mean crit= 127387.616469234
-### Improvements in best and average IC have bebingo en below the specified goals.
-### Algorithm is declared to have converged.
-### Completed.
-### summary(freq_GLM)
-### plot(freq_GLM, type = "r")
-
-# Resulting model + representation of fitted values for each claim class
-F_GLM=glm(nbrtotc~agecar+fuelc+split+lat+ageph+offset(lnexpo), data=DB, fam = poisson(link = log))
-summary(F_GLM)
-box1 = ggplot(DB, aes(F_GLM$fitted.values, group=nbrtotc)) + 
-        geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
-        xlab("Claims") + ylab("Fitted Values")+coord_flip()
-
-box1
-
-# Analysis of deviance
-anova(F_GLM, test="Chisq")
-
-# Let's calculate the R2, RMSE and MAE to compare the different models
-predictions1 <- F_GLM %>% predict(DB)
-data.frame( R2 = R2(predictions1, DB$nbrtotc),
-            RMSE = RMSE(predictions1, DB$nbrtotc),
-            MAE = MAE(predictions1, DB$nbrtotc))
-
-### Cross validation approaches to GLM using {caret}
-## 1 - Validation Set Approach
-# Split the data into training (80%) and test (20%) set 
+## GLM model selection (without commune, codposs, INS and expo) --> Cross validation approaches to GLM using {caret} + glmulti wrt BIC selection (with zero-inflated method for chargtot)
+# Validation Set Approach --> Split the data into training (80%) and test (20%) set
 set.seed(123)
 training.samples <- DB$nbrtotc %>% createDataPartition(p = 0.8, list = FALSE)
 train.data  <- DB[training.samples, ]
 test.data <- DB[-training.samples, ]
 
-g5 <- ggplot(train.data, aes(x = nbrtotc)) + theme_bw() + geom_density(trim = TRUE) +
-        geom_density(data = test.data, trim = TRUE, col = "red") + 
-        theme(axis.title.y = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank()) +
-        ggtitle("Caret splitting") 
-g5
+zeroinfl.glmulti=function(formula, data, inflate = "|1",...) {
+  zeroinfl(as.formula(paste(deparse(formula), inflate)),data=data,...)
+}
 
-F_GLM2 <- glm(nbrtotc~agecar+fuelc+split+lat+ageph+offset(lnexpo), data=train.data, fam = poisson(link = log))
+freq_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+chargtot+offset(lnexpo), fitfunc=zeroinfl.glmulti, inflate="|1", confsetsize = 200, data = train.data, intercept=TRUE, level=1, plotty=TRUE, report=TRUE, , method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7, family = poisson(link = "log"))
+summary(freq_GLM)
+plot(freq_GLM, type = "r")
+
+g6 <- ggplot(train.data, aes(x = nbrtotc)) + theme_bw() + geom_density(trim = TRUE) +
+  geom_density(data = test.data, trim = TRUE, col = "red") + 
+  theme(axis.title.y = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank()) +
+  ggtitle("Caret splitting") 
+g6
+
+#freq_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+chargtot+offset(lnexpo), family = poisson(link = "log"), confsetsize = 200, crit = bic, data = train.data, intercept=TRUE, level=1, plotty=TRUE, report=TRUE, method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7)
+#summary(freq_GLM)
+#plot(freq_GLM, type = "r")
+# After 740 generations:
+# Best model: nbrtotc~1+fuelc+split+lat+ageph+chargtot
+# Crit= 101032.907291056
+# Mean crit= 101294.960104771
+# Improvements in best and average IC have bebingo en below the specified goals.
+# Algorithm is declared to have converged.
+# Completed.
+
+# Resulting model + representation of fitted values for each claim class
+F_GLM=glm(nbrtotc~1+fuelc+split+lat+ageph+chargtot+offset(lnexpo), data=train.data, fam = poisson(link = log))
+summary(F_GLM)
+box1 = ggplot(train.data, aes(F_GLM$fitted.values, group=nbrtotc)) + 
+  geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
+  xlab("Claims") + ylab("Fitted Values")+coord_flip()
+  
+box1
 
 # Make predictions and compute the R2, RMSE and MAE
 predictions2 <- F_GLM2 %>% predict(test.data)
-data.frame( R2 = R2(predictions2, test.data$nbrtotc),
-            RMSE = RMSE(predictions2, test.data$nbrtotc),
-            MAE = MAE(predictions2, test.data$nbrtotc))
+
+
+# Analysis of deviance
+#anova(F_GLM, test="Chisq")
+
 
 # So, in this case the F_GLM remain the best (RMSE --> 2.436933 vs. 2.446796)
 
 ## 2 - 5-Fold Cross Validation
-set.seed(123) 
-train.control <- trainControl(method = "cv", number = 5, returnResamp = "all", selectionFunction = "best")
-hyper_grid <- expand.grid(k = seq(2, 2000, by = 2))
+#set.seed(123) 
+#train.control <- trainControl(method = "cv", number = 10, returnResamp = "all", selectionFunction = "best")
+#hyper_grid <- expand.grid(k = seq(2, 10, by = 2))
 # Train the model
-F_GLM3 <- train(nbrtotc~agecar+fuelc+split+lat+ageph+offset(lnexpo), data = DB, method = "knn", family = poisson(link = log),
-               trControl = train.control, tuneGrid = hyper_grid, metric = "Accuracy")
+#F_GLM3 <- train(nbrtotc~agecar+fuelc+split+lat+ageph+offset(lnexpo), data = DB, method = "lvq", trControl = train.control, 
+                #tuneGrid = hyper_grid)
 # Summarize the results
-print(F_GLM3)
+#print(F_GLM3)
+#plot(F_GLM3)
 
 
 #ggplot() + theme_bw() +
@@ -231,4 +237,20 @@ print(F_GLM3)
 #             size = 3) +
 #  scale_y_continuous("Error (RMSE)")
 # Define training control
+
+
+
+
+
+
+
+round(runif(100, 0,20)*round(runif(100)))-> vy2
+
+
+
+
+
+
+
+
 
