@@ -3,12 +3,14 @@
 # Importing libraries
 library(pscl)
 library(glmulti)
+library(rgdal)
+library(caret)
+# The previous packages have to be installed
 library(tidyverse)
 library(rgdal)
 library(mapview)
 library(sf)
 library(tmap)
-library(caret)
 library(gridExtra)
 library(rgeos)
 library(mapview)
@@ -163,9 +165,9 @@ plot.eda.map
 plot.eda.nclaims
 plot.eda.amount
 
-### Now, given the high proportion of 0, we will compare the best Cross-Validated 
+### Now, given the high proportion of 0, we will fit the best Cross-Validated 
 ### (using glmulti and Validation approach with {caret}, splitting the data into training (80%) and test (20%) set) 
-### Poisson GLM model with the best Cross-Validated Zero-Inflated Poisson Model by analyzing overdispersion of data
+### Poisson GLM model
 
 # Let's define the training and test data that will be used from now on
 set.seed(123)
@@ -180,20 +182,21 @@ g6 <- ggplot(train.data, aes(x = nbrtotc)) + theme_bw() + geom_density(trim = TR
 g6
 
 ## 1 - Classical Poisson Model (without commune, INS, codeposs and chargtot because the latter is deterministic wrt nbrtotc)
-C_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+offset(lnexpo), family = poisson(link = "log"), confsetsize = 200, crit = bic, data = train.data, intercept=TRUE, level=1, plotty=TRUE, report=TRUE, method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7)
+# C_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+offset(lnexpo), family = poisson(link = "log"), confsetsize = 200, crit = bic, data = train.data, intercept=TRUE, level=1, plotty=TRUE, report=TRUE, method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7)
 # summary(Classical_GLM)
 # plot(freq_GLM, type = "r")
 
-#After 400 generations:
-#Best model: nbrtotc~1+fuelc+split+lat+ageph
-#Crit= 101441.988027927
-#Mean crit= 101737.199031362
-#Improvements in best and average IC have bebingo en below the specified goals.
-#Algorithm is declared to have converged.
-#Completed
+# After 400 generations:
+# Best model: nbrtotc~1+fuelc+split+lat+ageph
+# Crit= 101441.988027927
+# Mean crit= 101737.199031362
+# Improvements in best and average IC have bebingo en below the specified goals.
+# Algorithm is declared to have converged.
+# Completed
 
 C_Poi=glm(nbrtotc~1+fuelc+split+lat+ageph+offset(lnexpo), data=train.data, fam = poisson(link = log))
 summary(C_Poi)
+#plot(C_Poi)
 
 # representation of fitted values (predictions) for each claim class
 fitted_C_Poi = C_Poi %>% fitted(test.data)
@@ -203,17 +206,25 @@ box1 = ggplot(train.data, aes(group=nbrtotc, exp(fitted_C_Poi))) +
 
 box1
 
+# Let's calculate the Test MSE which will be used to compare the GLM with the Machine Learning Method
+train_MSE_C_Poi = mean(C_Poi$residuals^2)
+test_MSE_C_Poi = mean((test.data$nbrtotc - predict(C_Poi, test.data, type="response")) ^ 2) 
+#actually Mean Squared Prediction Error
+
 # Check for over/underdispersion in the model
 E2 <- resid(C_Poi, type = "pearson")
 N  <- nrow(train.data)
 p  <- length(coef(C_Poi))   
 sum(E2^2) / (N - p) 
-# 1.196218 <--- Poor overdispersion... Indeed the Poisson family has dispersion parameter = 1. 
+# 1.196218 <--- Poor overdispersion: This means that there is extra variance 
+# not accounted for by the model or by the error structure. Indeed the Poisson family has dispersion parameter = 1. 
+mean(DB$nbrtotc)
+var(DB$nbrtotc)
+# The fact that the variance is greater than the mean in our dependent variable confirm the assumption of overd.
 # We can actually try to reduce it by using mixed models as the Zero Inflated Model
 # but actually we can conclude that the GLM is not so efficient to fit the data, so we will use machine learning
 # techniques to improve the fit
 
 
 
-   
-              
+
