@@ -31,6 +31,7 @@ DB1 = read.csv("./DB1.csv")
 DB1 = as_tibble(DB1)
 DB2 = read.csv("./inspost.csv")
 DB2 = as_tibble(DB2)
+# colnames(DB2)[1] <- gsub('^...','',colnames(DB2)[1]) # riga da aggiungere se in DB2 colonna 'INS' = 'i..INS'
 
 # Merging the two DB by Postal Code
 DB = left_join(DB1, DB2, by = c("CODPOSS" = "CODPOSS"))
