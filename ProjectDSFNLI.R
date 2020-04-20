@@ -5,6 +5,7 @@ library(pscl)
 library(glmulti)
 library(rgdal)
 library(caret)
+library(classInt)
 # The previous packages have to be installed
 library(tidyverse)
 library(rgdal)
@@ -107,64 +108,36 @@ mean
 variance = sum((DB$nbrtotc - mean * DB$expo)^2)/sum(DB$expo)
 variance
 
-DB %>% summarize(emp_freq = sum(nbrtotc) / sum(expo)) 
-freq_by_sex = DB %>% group_by(sexp) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-freq_by_age = DB %>% group_by(ageph) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-
-# Some graphs
-g3 = ggplot(freq_by_age, aes(x = ageph, y = emp_freq)) + theme_bw() + 
-  geom_bar(stat = "identity", color = "red",
-           fill = "orange", alpha = .5) + 
-  ggtitle("Empirical claim freq per age policyholder")
-g3
-
-g4 = ggplot(freq_by_sex, aes(x = sexp, y = emp_freq)) + theme_bw() +
-  geom_bar(stat = "identity", color = "red", 
-           fill = "orange", alpha = .5) + 
-  ggtitle("Empirical claim freq per sex policyholder")
-g4
-
 #---------------------------- 2. Spatial Data ------------------------------
+belgium_shape_sf <- st_read('./shape file Belgie postcodes/npc96_region_Project1.shp', quiet = TRUE)
+belgium_shape_sf <- st_transform(belgium_shape_sf, CRS("+proj=longlat +datum=WGS84"))
+belgium_shape_sf %>% as_tibble() %>% slice(1:3) 
 
-readShapefile = function(){
-  belgium_shape <- readOGR(dsn = path.expand("./shape file Belgie postcodes"), 
-                           layer = "npc96_region_Project1")
-  belgium_shape <- spTransform(belgium_shape, CRS("+proj=longlat +datum=WGS84"))
-  belgium_shape$id <- row.names(belgium_shape)
-  return(belgium_shape)
-}
-belgium_shape = readShapefile()
-plot.eda.map = ggplot(belgium_shape, aes(long, lat, group = group)) + 
-  geom_polygon(fill = NA, colour = "black", size = 0.1) + 
-  theme_bw()
-plot.eda.map
-mapview(belgium_shape)
-fortify(belgium_shape)%>% slice(1:3)
-
+# Now we will plot the relative exposure per area unit
 post_expo = DB %>% group_by(codposs) %>% summarize(num = n(), total_expo = sum(expo)) 
 post_expo %>% slice(1:5)
 
-belgium_shape@data = left_join(belgium_shape@data, post_expo, by = c("POSTCODE" = "codposs"))
-belgium_shape@data %>% slice(1:3) 
+belgium_shape_sf <- left_join(belgium_shape_sf, post_expo, by = c("POSTCODE" = "codposs"))
+belgium_shape_sf$freq <- belgium_shape_sf$total_expo/belgium_shape_sf$Shape_Area
 
-belgium_shape@data$freq = belgium_shape@data$total_expo/belgium_shape@data$Shape_Area
-belgium_shape@data$freq_class = cut(belgium_shape@data$freq, breaks = quantile(belgium_shape@data$freq, c(0,0.2,0.8,1), na.rm = TRUE), right = FALSE, include.lowest = TRUE, labels = c("low","average","high"))
-belgium_shape@data %>% slice(1:3) 
+belgium_shape_sf$freq_class <- cut(belgium_shape_sf$freq, breaks = quantile(belgium_shape_sf$freq, c(0,0.2,0.8,1), na.rm = TRUE),
+                                  right = FALSE, include.lowest = TRUE, labels = c("low", "average", "high"))
+ggplot(belgium_shape_sf) +
+  geom_sf(aes(fill = freq_class), colour = "black", size = 0.1) +
+  ggtitle("DB claim frequency data") + labs(fill = "Relative\nexposure") +
+  scale_fill_brewer(palette = "Blues", na.value = "white") + 
+  theme_bw()
 
-belgium_shape_f = fortify(belgium_shape)
-belgium_shape_f = left_join(belgium_shape_f, belgium_shape@data)
-
-plot.eda.map = ggplot(belgium_shape_f, aes(long, lat, group = group)) + 
-  geom_polygon(aes(fill = belgium_shape_f$freq_class), colour = "black", size = 0.1)
-plot.eda.map = plot.eda.map + theme_bw() + labs(fill = "Relative\nfrequency") + 
-  scale_fill_brewer(palette = "Blues", na.value = "white")
-plot.eda.map
+belgium_shape_sf <- st_simplify(belgium_shape_sf, dTolerance = 0.00001)
+tm_shape(belgium_shape_sf) + tm_borders(col = "black") + 
+        tm_fill(col = "freq_class", style = "cont", palette = "Blues", colorNA = "white")
+tmap_leaflet(tmap_last())
 
 #---------------------------- 3. Frequency Modelling ------------------------------
 #---------------------------- 3.1 GLM ------------------------------
 # plotting the frequency and severity
 plot.eda.nclaims
-plot.eda.amount
+plot.eda.sev
 
 ### Now, given the high proportion of 0, we will fit the best Cross-Validated 
 ### (using glmulti and Validation approach with {caret}, splitting the data into training (80%) and test (20%) set) 
@@ -176,11 +149,11 @@ training.samples <- DB$nbrtotc %>% createDataPartition(p = 0.8, list = FALSE)
 train.data  <- DB[training.samples, ]
 test.data <- DB[-training.samples, ]
 
-g5 <- ggplot(train.data, aes(x = nbrtotc)) + theme_bw() + geom_density(trim = TRUE) +
+g3 <- ggplot(train.data, aes(x = nbrtotc)) + theme_bw() + geom_density(trim = TRUE) +
   geom_density(data = test.data, trim = TRUE, col = "red") + 
   theme(axis.title.y = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank()) +
   ggtitle("Caret splitting") 
-g5
+g3
 
 ## 1 - Classical Poisson Model (without commune, INS, codeposs and chargtot because the latter is deterministic wrt nbrtotc)
 # C_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+offset(lnexpo), family = poisson(link = "log"), confsetsize = 200, crit = bic, data = train.data, intercept=TRUE, level=1, plotty=TRUE, report=TRUE, method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7)
@@ -199,12 +172,43 @@ C_Poi=glm(nbrtotc~1+fuelc+split+lat+ageph+offset(lnexpo), data=train.data, fam =
 summary(C_Poi)
 #plot(C_Poi)
 
+# Graphs representing the various covariates used wrt number of claim frequency
+
+DB %>% summarize(emp_freq = sum(nbrtotc) / sum(expo)) 
+freq_by_fuel = DB %>% group_by(fuelc) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_split = DB %>% group_by(split) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_lat = DB %>% group_by(lat) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_ageph = DB %>% group_by(ageph) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+
+g4 = ggplot(freq_by_fuel, aes(x = fuelc, y = emp_freq)) + theme_bw() + 
+  geom_bar(stat = "identity", color = "red",
+           fill = "orange", alpha = .5) + 
+  ggtitle("Empirical claim freq per fuel of the car")
+g4
+
+g5 = ggplot(freq_by_split, aes(x = split, y = emp_freq)) + theme_bw() +
+  geom_bar(stat = "identity", color = "red", 
+           fill = "orange", alpha = .5) + 
+  ggtitle("Empirical claim freq per payment split")
+g5
+
+g6 = ggplot(freq_by_lat, aes(x = lat, y = emp_freq)) + theme_bw() +
+  geom_bar(stat = "identity", color = "red", 
+           fill = "orange", alpha = .5) + 
+  ggtitle("Empirical claim freq per latitude")
+g6
+
+g7 = ggplot(freq_by_ageph, aes(x = ageph, y = emp_freq)) + theme_bw() +
+  geom_bar(stat = "identity", color = "red", 
+           fill = "orange", alpha = .5) + 
+  ggtitle("Empirical claim freq per ageph")
+g7
+
 # representation of fitted values (predictions) for each claim class
 fitted_C_Poi = C_Poi %>% fitted(test.data)
 box1 = ggplot(train.data, aes(group=nbrtotc, exp(fitted_C_Poi))) + 
   geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
   xlab("Claims") + ylab("Fitted Values")+coord_flip()
-
 box1
 
 # Let's calculate the Test MSE which will be used to compare the GLM with the Machine Learning Method
@@ -225,6 +229,65 @@ var(DB$nbrtotc)
 # We can actually try to reduce it by using mixed models as the Zero Inflated Model
 # but actually we can conclude that the GLM is not so efficient to fit the data, so we will use machine learning
 # techniques to improve the fit
+
+# Let's predict the annual expected claim frequency for some profiles
+drivers=data.frame(lnexpo = c(1, 1, 1), fuelc = c("Petrol", "Petrol", "Gasoil"), 
+                   split = c("Once", "Thrice", "Twice"), lat = c(50.81667, 50.40000, 50.71667),
+                   ageph = c(18, 45, 65))
+drivers
+
+predict(C_Poi, newdata = drivers, type = "response")
+
+# Let's represent the GLM results by Spatial Data
+post_dt <- st_centroid(belgium_shape_sf)
+post_dt$long <- do.call(rbind, post_dt$geometry)[,1]
+post_dt$lat <- do.call(rbind, post_dt$geometry)[,2]
+post_dt$fuelc <- train.data$fuelc[1]
+post_dt$split <- train.data$split[1]
+post_dt$lnexpo <- train.data$lnexpo[1]
+post_dt$ageph <- train.data$ageph[1]
+
+pred <- predict(C_Poi, newdata = post_dt, type = "terms", terms = "lat")
+dt_pred <- tibble(pc = post_dt$POSTCODE, long = post_dt$long, lat = post_dt$lat, pred)
+names(dt_pred)[4] <- "fit_spatial"
+
+dt_pred <- dplyr::arrange(dt_pred, post_dt$POSTCODE)
+
+num_bins <- 5
+classint_fisher <- classIntervals(dt_pred$fit_spatial, num_bins, style = "fisher")
+classint_fisher$brks
+min(dt_pred$fit_spatial)
+max(dt_pred$fit_spatial)
+
+belgium_shape_sf <- left_join(belgium_shape_sf, dt_pred,  by = c("POSTCODE" = "pc"))
+belgium_shape_sf$class_fisher <- cut(belgium_shape_sf$fit_spatial, breaks = classint_fisher$brks, right = FALSE, 
+                                     include.lowest = TRUE, dig.lab = 2)
+
+ggplot(belgium_shape_sf) + theme_bw() + labs(fill = "Fisher") +
+  geom_sf(aes(fill = class_fisher), colour = NA) +
+  ggtitle("DB claim frequency data") +
+  scale_fill_brewer(palette = "Blues", na.value = "white") +
+  theme_bw()
+
+# crp <- colorRampPalette(c("#99CCFF", "#003366"))  
+# plot(classint_fisher, crp(num_bins), 
+#     xlab = expression(hat(f)(long,lat)), 
+#     main = "Fisher")
+
+#belgium_shape_sf <- left_join(belgium_shape_sf, dt_pred, by = c("POSTCODE" = "codposs"))
+#ggplot(belgium_shape_sf) +
+#  geom_sf(aes(fill = fit_spatial), colour = NA) +
+#  ggtitle("MTPL claim frequency data") +
+#  scale_fill_gradient(low="#99CCFF", high="#003366") +
+#  theme_bw()
+
+
+
+
+
+
+
+
 
 
 #---------------------------- 3.2 Gradient Boosting ------------------------------
