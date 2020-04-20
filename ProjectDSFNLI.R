@@ -57,7 +57,7 @@ fill = "orange"
 ylab = "Relative frequency"
 ggplot.bar = function(DT, variable, xlab){
   ggplot(data = DT, aes(as.factor(variable))) + theme_bw() + 
-    geom_bar(aes(y = (..count..)/sum(..count..)), col = col, fill = fill, alpha = 0.5) + labs(x = xlab, y = ylab)
+    geom_bar(aes(y = (..count..)/sum(..count..)), col = col, fill = fill, alpha = 0.5) + labs(x = xlab, y = "%")
 }
 ggplot.hist = function(DT, variable, xlab, binwidth){
   ggplot(data = DT, aes(variable)) + theme_bw() + 
@@ -65,14 +65,14 @@ ggplot.hist = function(DT, variable, xlab, binwidth){
     labs(x = xlab, y = ylab)
 }
 
-plot.eda.fuel = ggplot.bar(DB, DB$fuelc, "fuel") + xlab("Fuel") + ylab("%")
-plot.eda.sex = ggplot.bar(DB, DB$sexp, "sex") + xlab("P/h sex") + ylab("%")
-plot.eda.use = ggplot.bar(DB, DB$usec, "use") + xlab("Type of use") + ylab("%")
+plot.eda.fuel = ggplot.bar(DB, DB$fuelc, "fuel") + xlab("Fuel")
+plot.eda.sex = ggplot.bar(DB, DB$sexp, "sex") + xlab("P/h sex")
+plot.eda.use = ggplot.bar(DB, DB$usec, "use") + xlab("Type of use")
 DB$split = factor(DB$split, ordered = TRUE, levels = c("Once", "Twice", "Thrice", "Monthly"))
-plot.eda.split = ggplot.bar(DB, DB$split, "split") + xlab("Payment split") + ylab("%") 
+plot.eda.split = ggplot.bar(DB, DB$split, "split") + xlab("Payment split")
 DB$agecar = factor(DB$agecar, ordered = TRUE, levels = c("0-1", "2-5", "6-10", ">10"))
-plot.eda.agecar = ggplot.bar(DB, DB$agecar, "agec") + xlab("Age of the car") + ylab("%")
-plot.eda.ageph = ggplot.hist(DB, DB$ageph, "ageph", 1) + scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) + xlab("P/h age") + ylab("%")
+plot.eda.agecar = ggplot.bar(DB, DB$agecar, "agec") + xlab("Age of the car")
+plot.eda.ageph = ggplot.hist(DB, DB$ageph, "ageph", 1) + scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) + xlab("P/h age")
 
 g1 = grid.arrange(plot.eda.fuel, plot.eda.sex, plot.eda.use, plot.eda.split, plot.eda.ageph, plot.eda.agecar)
 g1
