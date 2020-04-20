@@ -52,74 +52,43 @@ DB = rename(DB, expo = duree)
 DB %>% slice(1:3) 
 
 # First some univariate analysis: see how each variable is distributed
-totn_by_ageph <- DB %>% group_by(ageph) %>% summarise(n = n()/length(DB$ageph))
-g_ageph <- ggplot(totn_by_ageph, aes(x=ageph, y=n)) + theme_bw() + 
-  geom_bar(stat = "identity", color = "red",
-           fill = "orange", alpha = 0.5) + scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
-  xlab("P/h age") + ylab("%") 
+col = "red"
+fill = "orange"
+ylab = "Relative frequency"
+ggplot.bar = function(DT, variable, xlab){
+  ggplot(data = DT, aes(as.factor(variable))) + theme_bw() + 
+    geom_bar(aes(y = (..count..)/sum(..count..)), col = col, fill = fill, alpha = 0.5) + labs(x = xlab, y = ylab)
+}
+ggplot.hist = function(DT, variable, xlab, binwidth){
+  ggplot(data = DT, aes(variable)) + theme_bw() + 
+    geom_histogram(aes(y = (..count..)/sum(..count..)), binwidth = binwidth, col = col, fill = fill, alpha = 0.5) + 
+    labs(x = xlab, y = ylab)
+}
 
+plot.eda.fuel = ggplot.bar(DB, DB$fuelc, "fuel") + xlab("Fuel") + ylab("%")
+plot.eda.sex = ggplot.bar(DB, DB$sexp, "sex") + xlab("P/h sex") + ylab("%")
+plot.eda.use = ggplot.bar(DB, DB$usec, "use") + xlab("Type of use") + ylab("%")
+DB$split = factor(DB$split, ordered = TRUE, levels = c("Once", "Twice", "Thrice", "Monthly"))
+plot.eda.split = ggplot.bar(DB, DB$split, "split") + xlab("Payment split") + ylab("%") 
+DB$agecar = factor(DB$agecar, ordered = TRUE, levels = c("0-1", "2-5", "6-10", ">10"))
+plot.eda.agecar = ggplot.bar(DB, DB$agecar, "agec") + xlab("Age of the car") + ylab("%")
+plot.eda.ageph = ggplot.hist(DB, DB$ageph, "ageph", 1) + scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) + xlab("P/h age") + ylab("%")
 
-totn_by_sexp <- DB %>% group_by(sexp) %>% summarise(n = n()/length(DB$sexp))
-g_sexp <- ggplot(totn_by_sexp, aes(x=sexp, y=n)) + theme_bw() + 
-  geom_bar(stat = "identity", color = "red",
-           fill = "orange", alpha = 0.5) +
-  xlab("P/h sex") + ylab("%")
+g1 = grid.arrange(plot.eda.fuel, plot.eda.sex, plot.eda.use, plot.eda.split, plot.eda.ageph, plot.eda.agecar)
+g1
 
+#Frequency --> it will be modelled in section 3.1 - 3.2
+plot.eda.nclaims = ggplot.bar(DB, variable = DB$nbrtotc, "nclaims") + xlab("Number of claims") + ylab("%")
+#Exposure
+plot.eda.exp = ggplot.hist(DB, DB$expo, "expo", 0.05) + xlab("Exposure to risk") + ylab("%")
+#Severity --> it wil be modelled in section 4.1 - 4.2
+DB.sev = DB %>% filter(chargtot > 0 & nbrtotan <= 81000)
+plot.eda.sev = ggplot(data = DB.sev, aes(chargtot)) + 
+  geom_density(adjust = 3, col = col, fill = fill, alpha = 0.5) + 
+  xlim(0, 1e4) + ylab("%") + xlab("Total claim amount") + theme_bw()
 
-totn_by_agecar <- DB %>% group_by(agecar) %>% summarise(n = n()/length(DB$agecar))
-totn_by_agecar$agecar <- factor(totn_by_agecar$agecar, ordered = TRUE, levels = c("0-1", "2-5", "6-10", ">10"))
-g_agecar <- ggplot(totn_by_agecar, aes(x=agecar, y=n)) + theme_bw() + 
-  geom_bar(stat = "identity", color = "red",
-           fill = "orange", alpha = 0.5) +
-  xlab("Age of the car") + ylab("%") 
-
-
-totn_by_fuelc <- DB %>% group_by(fuelc) %>% summarise(n = n()/length(DB$fuelc))
-g_fuelc <- ggplot(totn_by_fuelc, aes(x=fuelc, y=n)) + theme_bw() + 
-  geom_bar(stat = "identity", color = "red",
-           fill = "orange", alpha = 0.5) +
-  xlab("Fuel") + ylab("%") 
-
-
-totn_by_split <- DB %>% group_by(split) %>% summarise(n = n()/length(DB$split))
-totn_by_split$split <- factor(totn_by_split$split, ordered = TRUE, levels = c("Monthly", "Twice", "Thrice", "Once"))
-g_split <- ggplot(totn_by_split, aes(x=split, y=n)) + theme_bw() + 
-  geom_bar(stat = "identity", color = "red",
-           fill = "orange", alpha = 0.5) +
-  xlab("Payment split") + ylab("%") 
-
-
-totn_by_usec <- DB %>% group_by(usec) %>% summarise(n = n()/length(DB$usec))
-g_usec <- ggplot(totn_by_usec, aes(x=usec, y=n)) + theme_bw() + 
-  geom_bar(stat = "identity", color = "red",
-           fill = "orange", alpha = 0.5) +
-  xlab("Type of use") + ylab("%") 
-
-
-totn_by_expo <- DB %>% group_by(expo) %>% summarise(n = n()/length(DB$expo))
-g_expo <- ggplot(totn_by_expo, aes(x=expo, y=n)) + theme_bw() + 
-  geom_bar(stat = "identity", color = "red",
-           fill = "orange", alpha = 0.5) +
-  xlab("Exposure to risk") + ylab("%") 
-
-
-totn_by_nbrtotc <- DB %>% group_by(nbrtotc) %>% summarise(n = n()/length(DB$nbrtotc))
-g_nbrtotc <- ggplot(totn_by_nbrtotc, aes(x=nbrtotc, y=n)) + theme_bw() + 
-  geom_bar(stat = "identity", color = "red",
-           fill = "orange", alpha = 0.5) +
-  scale_x_continuous(breaks = scales::pretty_breaks(n = 6)) +
-  xlab("Number of claims") + ylab("%") 
-
-
-totn_by_chargtot <- DB %>% filter(chargtot > 0) 
-g_chargtot <- ggplot(totn_by_chargtot, aes(chargtot)) + 
-  geom_density(adjust = 3, col = "red", fill = "orange", alpha = 0.5) + xlim(0, 10000)+ 
-  xlab("Total claim amount") + ylab("%") + theme_bw() 
-
-g_univariate <- grid.arrange(g_ageph,g_sexp,g_agecar,g_fuelc,g_split,g_usec,g_expo,g_nbrtotc,g_chargtot)
-g_univariate
-
-
+g2 = grid.arrange(plot.eda.nclaims, plot.eda.exp, plot.eda.sev)
+g2
 
 # Some analysis
 # Let us count the proportion of 0 in chargtot, lnexpo and nbrtotc
@@ -143,56 +112,17 @@ freq_by_sex = DB %>% group_by(sexp) %>% summarize(emp_freq = sum(nbrtotc) / sum(
 freq_by_age = DB %>% group_by(ageph) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
 
 # Some graphs
-g2 = ggplot(freq_by_age, aes(x = ageph, y = emp_freq)) + theme_bw() + 
+g3 = ggplot(freq_by_age, aes(x = ageph, y = emp_freq)) + theme_bw() + 
   geom_bar(stat = "identity", color = "red",
            fill = "orange", alpha = .5) + 
-  ggtitle("MTPL - empirical claim freq per age policyholder")
-g2
-
-g3 = ggplot(freq_by_sex, aes(x = sexp, y = emp_freq)) + theme_bw() +
-  geom_bar(stat = "identity", color = "red", 
-           fill = "orange", alpha = .5) + 
-  ggtitle("MTPL - empirical claim freq per sex policyholder")
+  ggtitle("Empirical claim freq per age policyholder")
 g3
 
-col = "red"
-fill = "orange"
-ylab = "Relative frequency"
-ggplot.bar = function(DT, variable, xlab){
-  ggplot(data = DT, aes(as.factor(variable))) + theme_bw() + 
-    geom_bar(aes(y = (..count..)/sum(..count..)), col = col, fill = fill, alpha = 0.5) + labs(x = xlab, y = ylab)
-}
-
-ggplot.hist = function(DT, variable, xlab, binwidth){
-  ggplot(data = DT, aes(variable)) + theme_bw() + 
-    geom_histogram(aes(y = (..count..)/sum(..count..)), binwidth = binwidth, col = col, fill = fill, alpha = 0.5) + 
-    labs(x = xlab, y = ylab)
-}
-
-#Frequency
-plot.eda.nclaims = ggplot.bar(DB, variable = DB$nbrtotc, "nclaims")
-#Exposure
-plot.eda.exp = ggplot.hist(DB, DB$expo, "expo", 0.05)
-#Severity
-DB.sev = DB %>% filter(chargtot > 0 & nbrtotan <= 81000)
-plot.eda.amount = ggplot(data = DB.sev, aes(chargtot)) + 
-  geom_density(adjust = 3, col = col, fill = fill, alpha = 0.5) + 
-  xlim(0, 1e4) + ylab(ylab) + xlab("severity") + theme_bw()
-
-g4 = grid.arrange(plot.eda.nclaims, plot.eda.exp, plot.eda.amount)
+g4 = ggplot(freq_by_sex, aes(x = sexp, y = emp_freq)) + theme_bw() +
+  geom_bar(stat = "identity", color = "red", 
+           fill = "orange", alpha = .5) + 
+  ggtitle("Empirical claim freq per sex policyholder")
 g4
-
-plot.eda.fuel = ggplot.bar(DB, DB$fuelc, "fuel")
-plot.eda.sex = ggplot.bar(DB, DB$sexp, "sex")
-plot.eda.use = ggplot.bar(DB, DB$usec, "use")
-DB$split = factor(DB$split, ordered = TRUE, levels = c("Once", "Twice", "Thrice", "Monthly"))
-plot.eda.split = ggplot.bar(DB, DB$split, "split")
-DB$agecar = factor(DB$agecar, ordered = TRUE, levels = c("0-1", "2-5", "6-10", ">10"))
-plot.eda.agecar = ggplot.bar(DB, DB$agecar, "agec")
-plot.eda.ageph = ggplot.hist(DB, DB$ageph, "ageph", 1)
-
-g5 = grid.arrange(plot.eda.fuel, plot.eda.sex, plot.eda.use, plot.eda.split, plot.eda.ageph, plot.eda.agecar)
-g5
 
 #---------------------------- 2. Spatial Data ------------------------------
 
@@ -230,7 +160,8 @@ plot.eda.map = plot.eda.map + theme_bw() + labs(fill = "Relative\nfrequency") +
   scale_fill_brewer(palette = "Blues", na.value = "white")
 plot.eda.map
 
-#---------------------------- 3. GLM ------------------------------
+#---------------------------- 3. Frequency Modelling ------------------------------
+#---------------------------- 3.1 GLM ------------------------------
 # plotting the frequency and severity
 plot.eda.nclaims
 plot.eda.amount
@@ -245,11 +176,11 @@ training.samples <- DB$nbrtotc %>% createDataPartition(p = 0.8, list = FALSE)
 train.data  <- DB[training.samples, ]
 test.data <- DB[-training.samples, ]
 
-g6 <- ggplot(train.data, aes(x = nbrtotc)) + theme_bw() + geom_density(trim = TRUE) +
+g5 <- ggplot(train.data, aes(x = nbrtotc)) + theme_bw() + geom_density(trim = TRUE) +
   geom_density(data = test.data, trim = TRUE, col = "red") + 
   theme(axis.title.y = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank()) +
   ggtitle("Caret splitting") 
-g6
+g5
 
 ## 1 - Classical Poisson Model (without commune, INS, codeposs and chargtot because the latter is deterministic wrt nbrtotc)
 # C_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+offset(lnexpo), family = poisson(link = "log"), confsetsize = 200, crit = bic, data = train.data, intercept=TRUE, level=1, plotty=TRUE, report=TRUE, method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7)
@@ -296,5 +227,4 @@ var(DB$nbrtotc)
 # techniques to improve the fit
 
 
-
-
+#---------------------------- 3.2 Gradient Boosting ------------------------------
