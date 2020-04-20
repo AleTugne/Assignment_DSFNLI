@@ -230,26 +230,21 @@ var(DB$nbrtotc)
 # but actually we can conclude that the GLM is not so efficient to fit the data, so we will use machine learning
 # techniques to improve the fit
 
-# Let's predict the annual expected claim frequency for some profiles
-drivers=data.frame(lnexpo = c(1, 1, 1), fuelc = c("Petrol", "Petrol", "Gasoil"), 
-                   split = c("Once", "Thrice", "Twice"), lat = c(50.81667, 50.40000, 50.71667),
-                   ageph = c(18, 45, 65))
-drivers
-
-predict(C_Poi, newdata = drivers, type = "response")
+# Let's predict the annual expected claim frequency for some profiles extracted from test.data
+predict(C_Poi, newdata = test.data[25:27,], type = "response")
 
 # Let's represent the GLM results by Spatial Data
 post_dt <- st_centroid(belgium_shape_sf)
 post_dt$long <- do.call(rbind, post_dt$geometry)[,1]
 post_dt$lat <- do.call(rbind, post_dt$geometry)[,2]
-post_dt$fuelc <- train.data$fuelc[1]
-post_dt$split <- train.data$split[1]
-post_dt$lnexpo <- train.data$lnexpo[1]
-post_dt$ageph <- train.data$ageph[1]
+post_dt$fuelc <- test.data$fuelc[1]
+post_dt$split <- test.data$split[1]
+post_dt$lnexpo <- test.data$lnexpo[1]
+post_dt$ageph <- test.data$ageph[1]
 
 pred <- predict(C_Poi, newdata = post_dt, type = "terms", terms = "lat")
 dt_pred <- tibble(pc = post_dt$POSTCODE, long = post_dt$long, lat = post_dt$lat, pred)
-names(dt_pred)[4] <- "fit_spatial"
+names(dt_pred)[4] <- "fit_spatial" 
 
 dt_pred <- dplyr::arrange(dt_pred, post_dt$POSTCODE)
 
@@ -268,26 +263,5 @@ ggplot(belgium_shape_sf) + theme_bw() + labs(fill = "Fisher") +
   ggtitle("DB claim frequency data") +
   scale_fill_brewer(palette = "Blues", na.value = "white") +
   theme_bw()
-
-# crp <- colorRampPalette(c("#99CCFF", "#003366"))  
-# plot(classint_fisher, crp(num_bins), 
-#     xlab = expression(hat(f)(long,lat)), 
-#     main = "Fisher")
-
-#belgium_shape_sf <- left_join(belgium_shape_sf, dt_pred, by = c("POSTCODE" = "codposs"))
-#ggplot(belgium_shape_sf) +
-#  geom_sf(aes(fill = fit_spatial), colour = NA) +
-#  ggtitle("MTPL claim frequency data") +
-#  scale_fill_gradient(low="#99CCFF", high="#003366") +
-#  theme_bw()
-
-
-
-
-
-
-
-
-
 
 #---------------------------- 3.2 Gradient Boosting ------------------------------
