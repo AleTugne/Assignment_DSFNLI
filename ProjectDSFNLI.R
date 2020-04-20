@@ -51,6 +51,76 @@ DB = DB %>% rename_all(function(.name) {
 DB = rename(DB, expo = duree)
 DB %>% slice(1:3) 
 
+# First some univariate analysis: see how each variable is distributed
+totn_by_ageph <- DB %>% group_by(ageph) %>% summarise(n = n()/length(DB$ageph))
+g_ageph <- ggplot(totn_by_ageph, aes(x=ageph, y=n)) + theme_bw() + 
+  geom_bar(stat = "identity", color = "red",
+           fill = "orange", alpha = 0.5) + scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
+  xlab("P/h age") + ylab("%") 
+
+
+totn_by_sexp <- DB %>% group_by(sexp) %>% summarise(n = n()/length(DB$sexp))
+g_sexp <- ggplot(totn_by_sexp, aes(x=sexp, y=n)) + theme_bw() + 
+  geom_bar(stat = "identity", color = "red",
+           fill = "orange", alpha = 0.5) +
+  xlab("P/h sex") + ylab("%")
+
+
+totn_by_agecar <- DB %>% group_by(agecar) %>% summarise(n = n()/length(DB$agecar))
+totn_by_agecar$agecar <- factor(totn_by_agecar$agecar, ordered = TRUE, levels = c("0-1", "2-5", "6-10", ">10"))
+g_agecar <- ggplot(totn_by_agecar, aes(x=agecar, y=n)) + theme_bw() + 
+  geom_bar(stat = "identity", color = "red",
+           fill = "orange", alpha = 0.5) +
+  xlab("Age of the car") + ylab("%") 
+
+
+totn_by_fuelc <- DB %>% group_by(fuelc) %>% summarise(n = n()/length(DB$fuelc))
+g_fuelc <- ggplot(totn_by_fuelc, aes(x=fuelc, y=n)) + theme_bw() + 
+  geom_bar(stat = "identity", color = "red",
+           fill = "orange", alpha = 0.5) +
+  xlab("Fuel") + ylab("%") 
+
+
+totn_by_split <- DB %>% group_by(split) %>% summarise(n = n()/length(DB$split))
+totn_by_split$split <- factor(totn_by_split$split, ordered = TRUE, levels = c("Monthly", "Twice", "Thrice", "Once"))
+g_split <- ggplot(totn_by_split, aes(x=split, y=n)) + theme_bw() + 
+  geom_bar(stat = "identity", color = "red",
+           fill = "orange", alpha = 0.5) +
+  xlab("Payment split") + ylab("%") 
+
+
+totn_by_usec <- DB %>% group_by(usec) %>% summarise(n = n()/length(DB$usec))
+g_usec <- ggplot(totn_by_usec, aes(x=usec, y=n)) + theme_bw() + 
+  geom_bar(stat = "identity", color = "red",
+           fill = "orange", alpha = 0.5) +
+  xlab("Type of use") + ylab("%") 
+
+
+totn_by_expo <- DB %>% group_by(expo) %>% summarise(n = n()/length(DB$expo))
+g_expo <- ggplot(totn_by_expo, aes(x=expo, y=n)) + theme_bw() + 
+  geom_bar(stat = "identity", color = "red",
+           fill = "orange", alpha = 0.5) +
+  xlab("Exposure to risk") + ylab("%") 
+
+
+totn_by_nbrtotc <- DB %>% group_by(nbrtotc) %>% summarise(n = n()/length(DB$nbrtotc))
+g_nbrtotc <- ggplot(totn_by_nbrtotc, aes(x=nbrtotc, y=n)) + theme_bw() + 
+  geom_bar(stat = "identity", color = "red",
+           fill = "orange", alpha = 0.5) +
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 6)) +
+  xlab("Number of claims") + ylab("%") 
+
+
+totn_by_chargtot <- DB %>% filter(chargtot > 0) 
+g_chargtot <- ggplot(totn_by_chargtot, aes(chargtot)) + 
+  geom_density(adjust = 3, col = "red", fill = "orange", alpha = 0.5) + xlim(0, 10000)+ 
+  xlab("Total claim amount") + ylab("%") + theme_bw() 
+
+g_univariate <- grid.arrange(g_ageph,g_sexp,g_agecar,g_fuelc,g_split,g_usec,g_expo,g_nbrtotc,g_chargtot)
+g_univariate
+
+
+
 # Some analysis
 # Let us count the proportion of 0 in chargtot, lnexpo and nbrtotc
 100*sum(DB$chargtot == 0)/nrow(DB)  #88%
