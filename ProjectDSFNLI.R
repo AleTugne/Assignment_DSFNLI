@@ -6,6 +6,7 @@ library(glmulti)
 library(rgdal)
 library(caret)
 library(classInt)
+library(gbm)
 # The previous packages have to be installed
 library(tidyverse)
 library(rgdal)
@@ -231,7 +232,7 @@ var(DB$nbrtotc)
 # techniques to improve the fit
 
 # Let's predict the annual expected claim frequency for some profiles extracted from test.data
-predict(C_Poi, newdata = test.data[25:27,], type = "response")
+pred_C_Poi=predict(C_Poi, newdata = test.data[23:25,], type = "response")
 
 # Let's represent the GLM results by Spatial Data
 post_dt <- st_centroid(belgium_shape_sf)
@@ -265,3 +266,60 @@ ggplot(belgium_shape_sf) + theme_bw() + labs(fill = "Fisher") +
   theme_bw()
 
 #---------------------------- 3.2 Gradient Boosting ------------------------------
+tgrid <- expand.grid('depth' = c(1,3,5), 'ntrees' = NA, 'oob_err' = NA)
+
+for(i in seq_len(nrow(tgrid))){
+  set.seed(76539) # reproducibility
+  # Fit a GBM
+  GB_GLM <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+offset(lnexpo),
+           data = train.data, distribution = 'poisson', var.monotone = NULL,
+           n.trees = 200, interaction.depth = tgrid$depth[i], n.minobsinnode = 1000, shrinkage = 0.1,
+           bag.fraction = 0.75, cv.folds = 0)
+
+  # Retrieve the optimal number of trees
+  opt <- which.max(cumsum(GB_GLM$oobag.improve))
+  tgrid$ntrees[i] <- opt
+  tgrid$oob_err[i] <- sum(GB_GLM$oobag.improve[1:opt])
+}
+
+# Order results on the OOB error
+tgrid %>% arrange(oob_err)
+
+# Fit the optimal GBM
+set.seed(123)
+GB_GLM <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+offset(lnexpo),
+              data = train.data, distribution = 'poisson', var.monotone = NULL,
+              n.trees = tgrid$ntrees[1], interaction.depth = tgrid$depth[1], n.minobsinnode = 1000, shrinkage = 0.1,
+              bag.fraction = 0.75, cv.folds = 0)
+
+summary(GB_GLM)
+print(GB_GLM)
+
+# Partial Dependence Plot (PDP) for ageph
+g8=plot(GB_GLM, i.var = 3, lwd = 2, col = "blue", main = "")
+g8
+
+# Let's check the correlation coef
+cor(train.data$ageph,train.data$nbrtotc) #negative correlation coeff --> proven
+
+# Partial Dependence Plot (PDP) for ageph:sexp
+g9=plot(GB_GLM, i.var = c(3,6), lwd = 2, col = "blue", main = "")
+g9
+
+# Let's predict the annual expected claim frequency for some profiles extracted from test.data
+pred_GB_GLM=predict(GB_GLM, newdata = test.data[25:27,], type = "response", n.trees = 111) + test.data$lnexpo[23:25]
+
+# compute the test error as a function of number of trees
+n.trees = seq(from=1 ,to=111, by=1) #no of trees-a vector of 111 values 
+#Generating a Prediction matrix for each Tree
+predmatrix<-predict(GB_GLM,test.data,n.trees = n.trees, type = "response")
+dim(predmatrix) #dimentions of the Prediction Matrix
+
+#Calculating The Mean Squared Test Error
+test_MSE_GB_GLM<-with(test.data,apply((predmatrix-nbrtotc)^2,2,mean))
+head(test_MSE_GB_GLM) #contains the Mean squared test error for each of the 100 trees averaged
+Min_test_MSE_GB_GLM=min(test_MSE_GB_GLM)
+#Plotting the test error vs number of trees
+plot(n.trees , test_MSE_GB_GLM , pch=19,col="blue",xlab="Number of Trees",ylab="Test Error", main = "Perfomance of Boosting on Test Set")
+abline(h = min(test_MSE_GB_GLM),col="red")
+legend("topright",c("Min. MSTE"),col="red",lty=1,lwd=1)
