@@ -42,7 +42,7 @@ DB = left_join(DB1, DB2, by = c("CODPOSS" = "CODPOSS"))
 
 # Re-arranging the Columns to reflect: infos about the city, ph, car, policy
 col_order <- c("CODPOSS", "COMMUNE", "LAT", "LONG", "INS", "AGEPH", "sexp", 
-               "agecar", "fuelc", "split", "usec", "duree", "lnexpo", "nbrtotc",
+               "agecar", "fuelc", "split", "usec", "fleetc", "sportc", "powerc", "coverp", "duree", "lnexpo", "nbrtotc",
                "nbrtotan", "chargtot")
 DB = DB[, col_order]
 
@@ -67,16 +67,22 @@ ggplot.hist = function(DT, variable, xlab, binwidth){
     labs(x = xlab, y = ylab)
 }
 
-plot.eda.fuel = ggplot.bar(DB, DB$fuelc, "fuel") + xlab("Fuel")
-plot.eda.sex = ggplot.bar(DB, DB$sexp, "sex") + xlab("P/h sex")
-plot.eda.use = ggplot.bar(DB, DB$usec, "use") + xlab("Type of use")
 DB$split = factor(DB$split, ordered = TRUE, levels = c("Once", "Twice", "Thrice", "Monthly"))
-plot.eda.split = ggplot.bar(DB, DB$split, "split") + xlab("Payment split")
 DB$agecar = factor(DB$agecar, ordered = TRUE, levels = c("0-1", "2-5", "6-10", ">10"))
-plot.eda.agecar = ggplot.bar(DB, DB$agecar, "agec") + xlab("Age of the car")
-plot.eda.ageph = ggplot.hist(DB, DB$ageph, "ageph", 1) + scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) + xlab("P/h age")
+DB$powerc = factor(DB$powerc, ordered = TRUE, levels = c("<66", "66-110", ">110"))
 
-g1 = grid.arrange(plot.eda.fuel, plot.eda.sex, plot.eda.use, plot.eda.split, plot.eda.ageph, plot.eda.agecar)
+plot.eda.sex = ggplot.bar(DB, DB$sexp, "sex") + xlab("P/h sex")
+plot.eda.ageph = ggplot.hist(DB, DB$ageph, "ageph", 1) + scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) + xlab("P/h age")
+plot.eda.fuel = ggplot.bar(DB, DB$fuelc, "fuel") + xlab("Fuel")
+plot.eda.use = ggplot.bar(DB, DB$usec, "use") + xlab("Type of use")
+plot.eda.split = ggplot.bar(DB, DB$split, "split") + xlab("Payment split")
+plot.eda.agecar = ggplot.bar(DB, DB$agecar, "agec") + xlab("Age of the car")
+plot.eda.fleet = ggplot.bar(DB, DB$fleetc, "fleet") + xlab("Fleet")
+plot.eda.sport = ggplot.bar(DB, DB$sportc, "sport") + xlab("Sport Car")
+plot.eda.cover = ggplot.bar(DB, DB$coverp, "cover") + xlab("Type of Coverage")
+plot.eda.power = ggplot.bar(DB, DB$powerc, "power") + xlab("Power of the car")
+
+g1 = grid.arrange(plot.eda.sex, plot.eda.ageph, plot.eda.fuel, plot.eda.use, plot.eda.split, plot.eda.agecar, plot.eda.fleet, plot.eda.sport, plot.eda.cover, plot.eda.power)
 g1
 
 #Frequency --> it will be modelled in section 3.1 - 3.2
@@ -157,7 +163,7 @@ g3 <- ggplot(train.data, aes(x = nbrtotc)) + theme_bw() + geom_density(trim = TR
 g3
 
 ## 1 - Classical Poisson Model (without commune, INS, codeposs and chargtot because the latter is deterministic wrt nbrtotc)
-# C_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+offset(lnexpo), family = poisson(link = "log"), confsetsize = 200, crit = bic, data = train.data, intercept=TRUE, level=1, plotty=TRUE, report=TRUE, method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7)
+# C_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+offset(lnexpo), family = poisson(link = "log"), confsetsize = 200, crit = bic, data = train.data, intercept=TRUE, level=1, plotty=TRUE, report=TRUE, method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7)
 # summary(Classical_GLM)
 # plot(freq_GLM, type = "r")
 
@@ -287,7 +293,7 @@ tgrid %>% arrange(oob_err)
 
 # Fit the optimal GBM
 set.seed(123)
-GB_GLM <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+offset(lnexpo),
+GB_GLM <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+offset(lnexpo),
               data = train.data, distribution = 'poisson', var.monotone = NULL,
               n.trees = tgrid$ntrees[1], interaction.depth = tgrid$depth[1], n.minobsinnode = 1000, shrinkage = 0.1,
               bag.fraction = 0.75, cv.folds = 0)
@@ -324,4 +330,30 @@ plot(n.trees , test_MSE_GB_GLM , pch=19,col="blue",xlab="Number of Trees",ylab="
 abline(h = min(test_MSE_GB_GLM),col="red")
 legend("topright",c("Min. MSTE"),col="red",lty=1,lwd=1)
 
+#---------------------------- 4. Severity Modelling ------------------------------
+#---------------------------- 4.1 GLM ------------------------------
+
+# Claim severity is highly skewed (to the right), so to model it we can use the Gamma distribution
+# This is used when the waiting times between two events in a process follow a Poisson Process
+# This distribution has two parameters: 
+# - k = number of occurrencies of an event
+# - θ = 1/λ is the mean number of events per time unit (λ is the mean time between events)
+
+# Let's plot the severity
+plot.eda.sev
+100*sum(DB$chargtot == 0)/nrow(DB)  #88%
+# the main characteristic of the Gamma is that all the outcomes must be positive,
+# Here we have that the 88% of the observations are 0, so we have to split the DB 
+# into observations without loss and observations with losses
 #
+
+
+
+
+
+
+
+
+
+
+#---------------------------- 4.2 Gradient Boosting ------------------------------
