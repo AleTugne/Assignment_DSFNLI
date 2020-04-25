@@ -2,11 +2,12 @@
 
 # Importing libraries
 library(pscl)
-library(glmulti)
+library(glmnet)
 library(rgdal)
 library(caret)
 library(classInt)
 library(gbm)
+library(plotmo)
 # The previous packages have to be installed
 library(tidyverse)
 library(rgdal)
@@ -28,81 +29,121 @@ library(dplyr)
 dir = dirname(rstudioapi::getActiveDocumentContext()$path)
 setwd(dir)
 
+#Setting graphs' colour
+KULbg <- "#116E8A"
+
 #---------------------------- 1. Data Exploration ------------------------------
 
 # Importing the two DataBase
-DB1 = read.csv("./DB1.csv")
-DB1 = as_tibble(DB1)
-DB2 = read.csv("./inspost.csv")
-DB2 = as_tibble(DB2)
+DB1 <- read.csv("./DB1.csv")
+DB1 <- as_tibble(DB1)
+DB2 <- read.csv("./inspost.csv")
+DB2 <- as_tibble(DB2)
 # colnames(DB2)[1] <- gsub('^...','',colnames(DB2)[1]) # riga da aggiungere se in DB2 colonna 'INS' = 'i..INS'
 
 # Merging the two DB by Postal Code
-DB = left_join(DB1, DB2, by = c("CODPOSS" = "CODPOSS"))
+DB <- left_join(DB1, DB2, by = c("CODPOSS" = "CODPOSS"))
 
 # Re-arranging the Columns to reflect: infos about the city, ph, car, policy
 col_order <- c("CODPOSS", "COMMUNE", "LAT", "LONG", "INS", "AGEPH", "sexp", 
                "agecar", "fuelc", "split", "usec", "fleetc", "sportc", "powerc", "coverp", "duree", "lnexpo", "nbrtotc",
                "nbrtotan", "chargtot")
-DB = DB[, col_order]
+DB <- DB[, col_order]
 
 # Rename the columns in lowercase and spaces with underscores
-DB = DB %>% rename_all(function(.name) {
+DB <- DB %>% rename_all(function(.name) {
   .name %>% tolower 
 })
-DB = rename(DB, expo = duree)
+DB <- rename(DB, expo = duree)
 DB %>% slice(1:3) 
 
 # First some univariate analysis: see how each variable is distributed
-col = "red"
-fill = "orange"
-ylab = "Relative frequency"
-ggplot.bar = function(DT, variable, xlab){
+# Proposta 1 - Barcharts
+ylab <- "Relative frequency"
+ggplot.bar <- function(DT, variable, xlab){
   ggplot(data = DT, aes(as.factor(variable))) + theme_bw() + 
-    geom_bar(aes(y = (..count..)/sum(..count..)), col = col, fill = fill, alpha = 0.5) + labs(x = xlab, y = "%")
+    geom_bar(aes(y = (..count..)/sum(..count..)), col = KULbg, fill = KULbg, alpha = 0.5) + labs(x = xlab, y = "%")
 }
-ggplot.hist = function(DT, variable, xlab, binwidth){
+ggplot.hist <- function(DT, variable, xlab, binwidth){
   ggplot(data = DT, aes(variable)) + theme_bw() + 
-    geom_histogram(aes(y = (..count..)/sum(..count..)), binwidth = binwidth, col = col, fill = fill, alpha = 0.5) + 
+    geom_histogram(aes(y = (..count..)/sum(..count..)), binwidth = binwidth, col = KULbg, fill = KULbg, alpha = 0.5) + 
     labs(x = xlab, y = ylab)
 }
 
-DB$split = factor(DB$split, ordered = TRUE, levels = c("Once", "Twice", "Thrice", "Monthly"))
-DB$agecar = factor(DB$agecar, ordered = TRUE, levels = c("0-1", "2-5", "6-10", ">10"))
-DB$powerc = factor(DB$powerc, ordered = TRUE, levels = c("<66", "66-110", ">110"))
+DB$split <- factor(DB$split, ordered = TRUE, levels = c("Once", "Twice", "Thrice", "Monthly"))
+DB$agecar <- factor(DB$agecar, ordered = TRUE, levels = c("0-1", "2-5", "6-10", ">10"))
+DB$powerc <- factor(DB$powerc, ordered = TRUE, levels = c("<66", "66-110", ">110"))
 
-plot.eda.sex = ggplot.bar(DB, DB$sexp, "sex") + xlab("P/h sex")
-plot.eda.ageph = ggplot.hist(DB, DB$ageph, "ageph", 1) + scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) + xlab("P/h age")
-plot.eda.fuel = ggplot.bar(DB, DB$fuelc, "fuel") + xlab("Fuel")
-plot.eda.use = ggplot.bar(DB, DB$usec, "use") + xlab("Type of use")
-plot.eda.split = ggplot.bar(DB, DB$split, "split") + xlab("Payment split")
-plot.eda.agecar = ggplot.bar(DB, DB$agecar, "agec") + xlab("Age of the car")
-plot.eda.fleet = ggplot.bar(DB, DB$fleetc, "fleet") + xlab("Fleet")
-plot.eda.sport = ggplot.bar(DB, DB$sportc, "sport") + xlab("Sport Car")
-plot.eda.cover = ggplot.bar(DB, DB$coverp, "cover") + xlab("Type of Coverage")
-plot.eda.power = ggplot.bar(DB, DB$powerc, "power") + xlab("Power of the car")
+plot.eda.sex <- ggplot.bar(DB, DB$sexp, "sex") + xlab("P/h sex")
+plot.eda.ageph <- ggplot.hist(DB, DB$ageph, "ageph", 1) + scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) + xlab("P/h age")
+plot.eda.fuel <- ggplot.bar(DB, DB$fuelc, "fuel") + xlab("Fuel")
+plot.eda.use <- ggplot.bar(DB, DB$usec, "use") + xlab("Type of use")
+plot.eda.split <- ggplot.bar(DB, DB$split, "split") + xlab("Payment split")
+plot.eda.agecar <- ggplot.bar(DB, DB$agecar, "agec") + xlab("Age of the car")
+plot.eda.fleet <- ggplot.bar(DB, DB$fleetc, "fleet") + xlab("Fleet")
+plot.eda.sport <- ggplot.bar(DB, DB$sportc, "sport") + xlab("Sport Car")
+plot.eda.cover <- ggplot.bar(DB, DB$coverp, "cover") + xlab("Type of Coverage")
+plot.eda.power <- ggplot.bar(DB, DB$powerc, "power") + xlab("Power of the car")
 
-g1 = grid.arrange(plot.eda.sex, plot.eda.ageph, plot.eda.fuel, plot.eda.use, plot.eda.split, plot.eda.agecar, plot.eda.fleet, plot.eda.sport, plot.eda.cover, plot.eda.power)
+g1 <- grid.arrange(plot.eda.sex, plot.eda.ageph, plot.eda.fuel, plot.eda.use, plot.eda.split, plot.eda.agecar, plot.eda.fleet, plot.eda.sport, plot.eda.cover, plot.eda.power)
 g1
 
+# Proposta 2 - Piecharts
+pie.chart.2lvs <- function(DT, variable, title, values) {
+  ggplot(DT, aes(x = "", fill = variable)) + 
+    geom_bar(color = "white") + 
+    coord_polar(theta = "y") +
+    scale_fill_manual(values = values) +
+    labs(title = title) + theme_void()
+}
+pie.chart.3lvs <- function(DT, variable, title) {
+  ggplot(DT, aes(x = "", fill = variable)) + 
+    geom_bar(color = "white") + 
+    coord_polar(theta = "y") +
+    scale_fill_manual(values = c(KULbg, "red2", "lightblue2")) +
+    labs(title = title) + theme_void()
+}
+pie.chart.4lvs <- function(DT, variable, title) {
+  ggplot(DT, aes(x = "", fill = variable)) + 
+    geom_bar(color = "white") + 
+    coord_polar(theta = "y") +
+    scale_fill_manual(values = c(KULbg, "red2", "lightblue3", "lightblue2")) +
+    labs(title = title) + theme_void()
+}
+
+plot.eda.sex2 <- pie.chart.2lvs(DB, DB$sexp, "P/H's gender", c("red2", KULbg))
+plot.eda.fuel2 <- pie.chart.2lvs(DB, DB$fuelc, "Type of fuel", c("red2", KULbg))
+plot.eda.use2 <- pie.chart.2lvs(DB, DB$usec, "Type of use", c(KULbg, "red1"))
+plot.eda.split2 <- pie.chart.4lvs(DB, DB$split, "Payments' split")
+plot.eda.agecar2 <- pie.chart.4lvs(DB, DB$agecar, "Age of the car")
+plot.eda.fleet2 <- pie.chart.2lvs(DB, DB$fleetc, "Fleet", c(KULbg, "red1"))
+plot.eda.sport2 <- pie.chart.2lvs(DB, DB$sportc, "Sport Car", c(KULbg, "red1"))
+plot.eda.cover2 <- pie.chart.3lvs(DB, DB$coverp, "Type of Coverage")
+plot.eda.power2 <- pie.chart.3lvs(DB, DB$powerc, "Power of the car")
+
+g2 <- grid.arrange(plot.eda.sex2, plot.eda.ageph, plot.eda.fuel2, plot.eda.use2, plot.eda.split2, 
+                   plot.eda.agecar2, plot.eda.fleet2, plot.eda.sport2, plot.eda.cover2, plot.eda.power2, 
+                   ncol = 4)
+g2
+
 #Frequency --> it will be modelled in section 3.1 - 3.2
-plot.eda.nclaims = ggplot.bar(DB, variable = DB$nbrtotc, "nclaims") + xlab("Number of claims") + ylab("%")
+plot.eda.nclaims <- ggplot.bar(DB, variable = DB$nbrtotc, "nclaims") + xlab("Number of claims") + ylab("%")
 #Exposure
-plot.eda.exp = ggplot.hist(DB, DB$expo, "expo", 0.05) + xlab("Exposure to risk") + ylab("%")
+plot.eda.exp <- ggplot.hist(DB, DB$expo, "expo", 0.05) + xlab("Exposure to risk") + ylab("%")
 #Severity --> it wil be modelled in section 4.1 - 4.2
-DB.sev = DB %>% filter(chargtot > 0 & nbrtotan <= 81000)
-plot.eda.sev = ggplot(data = DB.sev, aes(chargtot)) + 
-  geom_density(adjust = 3, col = col, fill = fill, alpha = 0.5) + 
+plot.eda.sev <- DB %>% filter(chargtot > 0) %>% 
+  ggplot(aes(chargtot)) + 
+  geom_density(adjust = 3, col = KULbg, fill = KULbg, alpha = 0.5) + 
   xlim(0, 1e4) + ylab("%") + xlab("Total claim amount") + theme_bw()
 
-g2 = grid.arrange(plot.eda.nclaims, plot.eda.exp, plot.eda.sev)
-g2
+g3 <- grid.arrange(plot.eda.nclaims, plot.eda.exp, plot.eda.sev)
+g3
 
 # Some analysis
 # Let us count the proportion of 0 in chargtot, lnexpo and nbrtotc
 100*sum(DB$chargtot == 0)/nrow(DB)  #88%
-g1=ggplot(DB, aes(chargtot)) + geom_histogram(bins=100) + scale_y_log10()
-g1
+g4 <- ggplot(DB, aes(chargtot)) + geom_histogram(bins=100) + scale_y_log10()
+g4
 100*sum(DB$lnexpo == 0)/nrow(DB)  #77%
 100*sum(DB$nbrtotc == 0)/nrow(DB)  #88%
 
@@ -110,9 +151,9 @@ g1
 # Poisson GLM to a Zero-Inflated Poisson GLM
 
 mean(DB$nbrtotc)
-mean = sum(DB$nbrtotc)/sum(DB$expo)
+mean <- sum(DB$nbrtotc)/sum(DB$expo)
 mean
-variance = sum((DB$nbrtotc - mean * DB$expo)^2)/sum(DB$expo)
+variance <- sum((DB$nbrtotc - mean * DB$expo)^2)/sum(DB$expo)
 variance
 
 #---------------------------- 2. Spatial Data ------------------------------
@@ -121,7 +162,7 @@ belgium_shape_sf <- st_transform(belgium_shape_sf, CRS("+proj=longlat +datum=WGS
 belgium_shape_sf %>% as_tibble() %>% slice(1:3) 
 
 # Now we will plot the relative exposure per area unit
-post_expo = DB %>% group_by(codposs) %>% summarize(num = n(), total_expo = sum(expo)) 
+post_expo <- DB %>% group_by(codposs) %>% summarize(num = n(), total_expo = sum(expo)) 
 post_expo %>% slice(1:5)
 
 belgium_shape_sf <- left_join(belgium_shape_sf, post_expo, by = c("POSTCODE" = "codposs"))
@@ -144,7 +185,6 @@ tmap_leaflet(tmap_last())
 #---------------------------- 3.1 GLM ------------------------------
 # plotting the frequency and severity
 plot.eda.nclaims
-plot.eda.sev
 
 ### Now, given the high proportion of 0, we will fit the best Cross-Validated 
 ### (using glmulti and Validation approach with {caret}, splitting the data into training (80%) and test (20%) set) 
@@ -156,31 +196,47 @@ training.samples <- DB$nbrtotc %>% createDataPartition(p = 0.8, list = FALSE)
 train.data  <- DB[training.samples, ]
 test.data <- DB[-training.samples, ]
 
-g3 <- ggplot(train.data, aes(x = nbrtotc)) + theme_bw() + geom_density(trim = TRUE) +
+g5 <- ggplot(train.data, aes(x = nbrtotc)) + theme_bw() + geom_density(trim = TRUE) +
   geom_density(data = test.data, trim = TRUE, col = "red") + 
-  theme(axis.title.y = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank()) +
-  ggtitle("Caret splitting") 
-g3
+  theme(axis.title.y = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(), legend.position="bottom") +
+  ggtitle("Caret splitting")
+g5
 
 ## 1 - Classical Poisson Model (without commune, INS, codeposs and chargtot because the latter is deterministic wrt nbrtotc)
-# C_GLM = glmulti(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+offset(lnexpo), family = poisson(link = "log"), confsetsize = 200, crit = bic, data = train.data, intercept=TRUE, level=1, plotty=TRUE, report=TRUE, method = "g", deltaB = 0.5, deltaM = 0.5, conseq=7)
-# summary(Classical_GLM)
-# plot(freq_GLM, type = "r")
 
-# After 400 generations:
-# Best model: nbrtotc~1+fuelc+split+lat+ageph
-# Crit= 101441.988027927
-# Mean crit= 101737.199031362
-# Improvements in best and average IC have bebingo en below the specified goals.
-# Algorithm is declared to have converged.
-# Completed
+# Now, we will use the LASSO regression for model selection: Prior to lasso, the most widely used method for choosing which covariates 
+# to include was stepwise selection, which only improves prediction accuracy in certain cases, such as when only a few covariates have 
+# a strong relationship with the outcome. However, in other cases, it can make prediction error worse. 
+# Also, at the time, ridge regression was the most popular technique for improving prediction accuracy. 
+# Ridge regression improves prediction error by shrinking large regression coefficients in order to reduce overfitting, 
+# but it does not perform covariate selection and therefore does not help to make the model more interpretable.
+# Lasso is able to achieve both of these goals by forcing the sum of the absolute value of the regression coefficients 
+# to be less than a fixed value, which forces certain coefficients to be set to zero, effectively choosing a simpler model that does 
+# not include those coefficients. This idea is similar to ridge regression, in which the sum of the squares of the coefficients is forced 
+# to be less than a fixed value, though in the case of ridge regression, this only shrinks the size of the coefficients, it does not set any 
+# of them to zero.
 
-C_Poi=glm(nbrtotc~1+fuelc+split+lat+ageph+offset(lnexpo), data=train.data, fam = poisson(link = log))
-summary(C_Poi)
-#plot(C_Poi)
+# To implement that reasoning, we will use the glmnet package (dropping commune, INS, codposs, expo, nbrtotan, chargtot) --> https://web.stanford.edu/~hastie/glmnet/glmnet_alpha.html 
+xmatrix = model.matrix(nbrtotc ~ ageph+lat+long+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp, data=train.data)[,-1]
 
-# Graphs representing the various covariates used wrt number of claim frequency
+# we have to find the best value of lambda (the one which minimizes the TMSE), so we will use Cross Validation
+# lasso_GLM_freq_CV = cv.glmnet(y=train.data$nbrtotc, xmatrix, family='poisson', offset=train.data$lnexpo, type.measure="mse", standardize=TRUE) #10F CV
+# plot(lasso_GLM_freq_CV)
 
+# lasso_GLM_freq_CV$lambda.min  # the minimum value of lambda
+# coef(lasso_GLM_freq_CV, s = "lambda.min") # the corresponding coefficients
+
+lasso_GLM_freq = glmnet(y=train.data$nbrtotc, xmatrix, family='poisson', alpha=1, offset=train.data$lnexpo, standardize=TRUE, s=0.0003302811)
+plot_glmnet(lasso_GLM_freq, label=5, xvar="norm")  # label the 5 biggest final coefs
+coef(lasso_GLM_freq, s=0.0003302811)
+# the last plot say us the most relevant covariates for the dependent variable, if their path is above 0, they have a 
+# positive relation with nbrtotc and vice versa --> https://stats.stackexchange.com/questions/154825/what-to-conclude-from-this-lasso-plot-glmnet
+# the most important thing is the above axis: the dof are the variable that are not zero for a particular level of lambda, 
+# that is the coefficient which penalized the betas in our model
+
+#To end, we cannot take a summary table of our regression --> https://stackoverflow.com/questions/12937331/why-is-it-inadvisable-to-get-statistical-summary-information-for-regression-coef 
+
+# Graphs representing some covariates used wrt number of claim frequency
 DB %>% summarize(emp_freq = sum(nbrtotc) / sum(expo)) 
 freq_by_fuel = DB %>% group_by(fuelc) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
 freq_by_split = DB %>% group_by(split) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
@@ -212,22 +268,23 @@ g7 = ggplot(freq_by_ageph, aes(x = ageph, y = emp_freq)) + theme_bw() +
 g7
 
 # representation of fitted values (predictions) for each claim class
-fitted_C_Poi = C_Poi %>% fitted(test.data)
-box1 = ggplot(train.data, aes(group=nbrtotc, exp(fitted_C_Poi))) + 
+xnewmatrix = model.matrix( ~ nbrtotc+ageph+lat+long+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp, data=test.data)[,-1]
+lasso_GLM_freq_pred=predict(lasso_GLM_freq, newx=xnewmatrix[,2:19], s=0.0003302811, type='response', newoffset=test.data$lnexpo)
+xnewmatrix2=as_tibble(xnewmatrix)
+box1 = ggplot(xnewmatrix2, aes(group=nbrtotc, lasso_GLM_freq_pred)) + 
   geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
   xlab("Claims") + ylab("Fitted Values")+coord_flip()
 box1
 
 # Let's calculate the Test MSE which will be used to compare the GLM with the Machine Learning Method
-train_MSE_C_Poi = mean(C_Poi$residuals^2)
-test_MSE_C_Poi = mean((test.data$nbrtotc - predict(C_Poi, test.data, type="response")) ^ 2) 
+test_MSE_C_Poi = mean((xnewmatrix2$nbrtotc - lasso_GLM_freq_pred) ^ 2) 
 #actually Mean Squared Prediction Error
 
 # Check for over/underdispersion in the model
-E2 <- resid(C_Poi, type = "pearson")
-N  <- nrow(train.data)
-p  <- length(coef(C_Poi))   
-sum(E2^2) / (N - p) 
+#E2 <- predict - fundm   resid(C_Poi, type = "pearson")
+#N  <- nrow(train.data)
+#p  <- length(coef(C_Poi))   
+#sum(E2^2) / (N - p) 
 # 1.196218 <--- Poor overdispersion: This means that there is extra variance 
 # not accounted for by the model or by the error structure. Indeed the Poisson family has dispersion parameter = 1. 
 mean(DB$nbrtotc)
@@ -238,7 +295,7 @@ var(DB$nbrtotc)
 # techniques to improve the fit
 
 # Let's predict the annual expected claim frequency for some profiles extracted from test.data
-pred_C_Poi=predict(C_Poi, newdata = test.data[23:25,], type = "response")
+PredOnFreqLassoGLM=predict(lasso_GLM_freq, newx=xnewmatrix[23:25,2:19], s=0.0003302811, type='response', newoffset=test.data$lnexpo)
 
 # Let's represent the GLM results by Spatial Data
 post_dt <- st_centroid(belgium_shape_sf)
