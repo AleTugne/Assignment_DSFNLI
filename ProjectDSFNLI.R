@@ -191,7 +191,7 @@ plot.eda.nclaims
 ### Poisson GLM model
 
 # Let's define the training and test data that will be used from now on
-set.seed(123)
+set.seed(100)
 training.samples <- DB$nbrtotc %>% createDataPartition(p = 0.8, list = FALSE)
 train.data  <- DB[training.samples, ]
 test.data <- DB[-training.samples, ]
@@ -217,18 +217,20 @@ g5
 # of them to zero.
 
 # To implement that reasoning, we will use the glmnet package (dropping commune, INS, codposs, expo, nbrtotan, chargtot) --> https://web.stanford.edu/~hastie/glmnet/glmnet_alpha.html 
-xmatrix = model.matrix(nbrtotc ~ ageph+lat+long+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp, data=train.data)[,-1]
+xmatrix <- model.matrix(nbrtotc ~ ageph+lat+long+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, data=train.data)[,-1]
 
+set.seed(100)
 # we have to find the best value of lambda (the one which minimizes the TMSE), so we will use Cross Validation
-# lasso_GLM_freq_CV = cv.glmnet(y=train.data$nbrtotc, xmatrix, family='poisson', offset=train.data$lnexpo, type.measure="mse", standardize=TRUE) #10F CV
+lasso_GLM_freq_CV <- cv.glmnet(y=train.data$nbrtotc, xmatrix, family='poisson', offset=train.data$lnexpo, type.measure="mse", standardize=TRUE) #10F CV
 # plot(lasso_GLM_freq_CV)
-
 # lasso_GLM_freq_CV$lambda.min  # the minimum value of lambda
 # coef(lasso_GLM_freq_CV, s = "lambda.min") # the corresponding coefficients
 
-lasso_GLM_freq = glmnet(y=train.data$nbrtotc, xmatrix, family='poisson', alpha=1, offset=train.data$lnexpo, standardize=TRUE, s=0.0003302811)
+lasso_GLM_freq <- glmnet(y=train.data$nbrtotc, xmatrix, family='poisson', offset=train.data$lnexpo, type.measure="mse", standardize=TRUE, s=lasso_GLM_freq_CV$lambda.min)
+coef(lasso_GLM_freq, s=lasso_GLM_freq_CV$lambda.min)
 plot_glmnet(lasso_GLM_freq, label=5, xvar="norm")  # label the 5 biggest final coefs
-coef(lasso_GLM_freq, s=0.0003302811)
+ 
+ 
 # the last plot say us the most relevant covariates for the dependent variable, if their path is above 0, they have a 
 # positive relation with nbrtotc and vice versa --> https://stats.stackexchange.com/questions/154825/what-to-conclude-from-this-lasso-plot-glmnet
 # the most important thing is the above axis: the dof are the variable that are not zero for a particular level of lambda, 
@@ -238,103 +240,128 @@ coef(lasso_GLM_freq, s=0.0003302811)
 
 # Graphs representing some covariates used wrt number of claim frequency
 DB %>% summarize(emp_freq = sum(nbrtotc) / sum(expo)) 
-freq_by_fuel = DB %>% group_by(fuelc) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-freq_by_split = DB %>% group_by(split) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-freq_by_lat = DB %>% group_by(lat) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-freq_by_ageph = DB %>% group_by(ageph) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_fuel <- DB %>% group_by(fuelc) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_split <- DB %>% group_by(split) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_lat <- DB %>% group_by(lat) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_ageph <- DB %>% group_by(ageph) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
 
-g4 = ggplot(freq_by_fuel, aes(x = fuelc, y = emp_freq)) + theme_bw() + 
+g4 <- ggplot(freq_by_fuel, aes(x = fuelc, y = emp_freq)) + theme_bw() + 
   geom_bar(stat = "identity", color = "red",
            fill = "orange", alpha = .5) + 
   ggtitle("Empirical claim freq per fuel of the car")
 g4
 
-g5 = ggplot(freq_by_split, aes(x = split, y = emp_freq)) + theme_bw() +
+g5 <- ggplot(freq_by_split, aes(x = split, y = emp_freq)) + theme_bw() +
   geom_bar(stat = "identity", color = "red", 
            fill = "orange", alpha = .5) + 
   ggtitle("Empirical claim freq per payment split")
 g5
 
-g6 = ggplot(freq_by_lat, aes(x = lat, y = emp_freq)) + theme_bw() +
+g6 <- ggplot(freq_by_lat, aes(x = lat, y = emp_freq)) + theme_bw() +
   geom_bar(stat = "identity", color = "red", 
            fill = "orange", alpha = .5) + 
   ggtitle("Empirical claim freq per latitude")
 g6
 
-g7 = ggplot(freq_by_ageph, aes(x = ageph, y = emp_freq)) + theme_bw() +
+g7 <- ggplot(freq_by_ageph, aes(x = ageph, y = emp_freq)) + theme_bw() +
   geom_bar(stat = "identity", color = "red", 
            fill = "orange", alpha = .5) + 
   ggtitle("Empirical claim freq per ageph")
 g7
 
 # representation of fitted values (predictions) for each claim class
-xnewmatrix = model.matrix( ~ nbrtotc+ageph+lat+long+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp, data=test.data)[,-1]
-lasso_GLM_freq_pred=predict(lasso_GLM_freq, newx=xnewmatrix[,2:19], s=0.0003302811, type='response', newoffset=test.data$lnexpo)
-xnewmatrix2=as_tibble(xnewmatrix)
-box1 = ggplot(xnewmatrix2, aes(group=nbrtotc, lasso_GLM_freq_pred)) + 
+xnewmatrix <- model.matrix( ~ nbrtotc+ageph+lat+long+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, data=test.data)[,-1]
+lasso_GLM_freq_pred=predict(lasso_GLM_freq, newx=xnewmatrix[,2:20], s=lasso_GLM_freq_CV$lambda.min, type='response', newoffset=test.data$lnexpo)
+xnewmatrix2 <- as_tibble(xnewmatrix)
+box1 <- ggplot(xnewmatrix2, aes(as.factor(nbrtotc), lasso_GLM_freq_pred)) + 
   geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
-  xlab("Claims") + ylab("Fitted Values")+coord_flip()
+  xlab("Claims") + ylab("Fitted Values")
 box1
 
 # Let's calculate the Test MSE which will be used to compare the GLM with the Machine Learning Method
-test_MSE_C_Poi = mean((xnewmatrix2$nbrtotc - lasso_GLM_freq_pred) ^ 2) 
+test_MSE_lasso_GLM <- mean((xnewmatrix2$nbrtotc - lasso_GLM_freq_pred) ^ 2) 
 #actually Mean Squared Prediction Error
 
 # Check for over/underdispersion in the model
-#E2 <- predict - fundm   resid(C_Poi, type = "pearson")
-#N  <- nrow(train.data)
-#p  <- length(coef(C_Poi))   
-#sum(E2^2) / (N - p) 
-# 1.196218 <--- Poor overdispersion: This means that there is extra variance 
-# not accounted for by the model or by the error structure. Indeed the Poisson family has dispersion parameter = 1. 
-mean(DB$nbrtotc)
-var(DB$nbrtotc)
+mean(train.data$nbrtotc)
+var(train.data$nbrtotc)
 # The fact that the variance is greater than the mean in our dependent variable confirm the assumption of overd.
 # We can actually try to reduce it by using mixed models as the Zero Inflated Model
 # but actually we can conclude that the GLM is not so efficient to fit the data, so we will use machine learning
 # techniques to improve the fit
 
 # Let's predict the annual expected claim frequency for some profiles extracted from test.data
-PredOnFreqLassoGLM=predict(lasso_GLM_freq, newx=xnewmatrix[23:25,2:19], s=0.0003302811, type='response', newoffset=test.data$lnexpo)
+PredOnFreqLassoGLM <- predict(lasso_GLM_freq, newx=xnewmatrix[23:25,2:20], s=lasso_GLM_freq_CV$lambda.min, type='response', newoffset=test.data$lnexpo)
+Pred_freq_final <- PredOnFreqLassoGLM*test.data$expo[23:25]
 
 # Let's represent the GLM results by Spatial Data
 post_dt <- st_centroid(belgium_shape_sf)
 post_dt$long <- do.call(rbind, post_dt$geometry)[,1]
 post_dt$lat <- do.call(rbind, post_dt$geometry)[,2]
+post_dt$ageph <- test.data$ageph[1]
+post_dt$agecar <- test.data$agecar[1]
+post_dt$usec <- test.data$usec[1]
+post_dt$sexp <- test.data$sexp[1]
 post_dt$fuelc <- test.data$fuelc[1]
 post_dt$split <- test.data$split[1]
-post_dt$lnexpo <- test.data$lnexpo[1]
-post_dt$ageph <- test.data$ageph[1]
+post_dt$fleetc <- test.data$fleetc[1]
+post_dt$sportc <- test.data$sportc[1]
+post_dt$powerc <- test.data$powerc[1]
+post_dt$coverp <- test.data$coverp[1]
 
-pred <- predict(C_Poi, newdata = post_dt, type = "terms", terms = "lat")
+post_dt <- as_tibble(post_dt)
+xnewmatrix3 <- model.matrix( ~ ageph+lat+long+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, data=post_dt)[,-1]
+
+pred <- predict(lasso_GLM_freq, newx=xnewmatrix3, type = "response", s=lasso_GLM_freq_CV$lambda.min, newoffset=test.data$lnexpo)
 dt_pred <- tibble(pc = post_dt$POSTCODE, long = post_dt$long, lat = post_dt$lat, pred)
 names(dt_pred)[4] <- "fit_spatial" 
 
 dt_pred <- dplyr::arrange(dt_pred, post_dt$POSTCODE)
 
-num_bins <- 5
-classint_fisher <- classIntervals(dt_pred$fit_spatial, num_bins, style = "fisher")
-classint_fisher$brks
-min(dt_pred$fit_spatial)
-max(dt_pred$fit_spatial)
+post_freq <- dt_pred %>% group_by(pc) %>% summarize(num = n(), total_freq = sum(fit_spatial)) 
+post_freq %>% slice(1:5)
 
-belgium_shape_sf <- left_join(belgium_shape_sf, dt_pred,  by = c("POSTCODE" = "pc"))
-belgium_shape_sf$class_fisher <- cut(belgium_shape_sf$fit_spatial, breaks = classint_fisher$brks, right = FALSE, 
-                                     include.lowest = TRUE, dig.lab = 2)
+belgium_shape_sf <- left_join(belgium_shape_sf, post_freq, by = c("POSTCODE" = "pc"))
+belgium_shape_sf$freq <- belgium_shape_sf$total_freq/belgium_shape_sf$Shape_Area
 
-ggplot(belgium_shape_sf) + theme_bw() + labs(fill = "Fisher") +
-  geom_sf(aes(fill = class_fisher), colour = NA) +
-  ggtitle("DB claim frequency data") +
-  scale_fill_brewer(palette = "Blues", na.value = "white") +
+belgium_shape_sf$freq_class <- cut(belgium_shape_sf$freq, breaks = quantile(belgium_shape_sf$freq, c(0,0.2,0.8,1), na.rm = TRUE),
+                                   right = FALSE, include.lowest = TRUE, labels = c("low", "average", "high"))
+ggplot(belgium_shape_sf) +
+  geom_sf(aes(fill = freq_class), colour = "black", size = 0.1) +
+  ggtitle("DB claim frequency data") + labs(fill = "Relative\nfreq") +
+  scale_fill_brewer(palette = "Blues", na.value = "white") + 
   theme_bw()
 
+belgium_shape_sf <- st_simplify(belgium_shape_sf, dTolerance = 0.00001)
+tm_shape(belgium_shape_sf) + tm_borders(col = "black") + 
+  tm_fill(col = "freq_class", style = "cont", palette = "Blues", colorNA = "white")
+tmap_leaflet(tmap_last())
+
+# Alternativa
+# num_bins <- 8
+# classint_fisher <- classIntervals(dt_pred$fit_spatial, num_bins, style = "fisher")
+# classint_fisher$brks
+# min(dt_pred$fit_spatial)
+# max(dt_pred$fit_spatial)
+
+# belgium_shape_sf <- left_join(belgium_shape_sf, dt_pred,  by = c("POSTCODE" = "pc"))
+# belgium_shape_sf$class_fisher <- cut(belgium_shape_sf$fit_spatial, breaks = classint_fisher$brks, right = FALSE, 
+#                                      include.lowest = TRUE, dig.lab = 3)
+
+# ggplot(belgium_shape_sf) + theme_bw() + labs(fill = "Fisher") +
+#   geom_sf(aes(fill = class_fisher), colour = NA) +
+#   ggtitle("DB claim frequency data") +
+#  scale_fill_brewer(palette = "Blues", na.value = "white") +
+#  theme_bw()
+
 #---------------------------- 3.2 Gradient Boosting ------------------------------
+
 tgrid <- expand.grid('depth' = c(1,3,5), 'ntrees' = NA, 'oob_err' = NA)
 
 for(i in seq_len(nrow(tgrid))){
-  set.seed(76539) # reproducibility
+  set.seed(100) 
   # Fit a GBM
-  GB_GLM <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+offset(lnexpo),
+  GB_GLM <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long+offset(lnexpo),
            data = train.data, distribution = 'poisson', var.monotone = NULL,
            n.trees = 200, interaction.depth = tgrid$depth[i], n.minobsinnode = 1000, shrinkage = 0.1,
            bag.fraction = 0.75, cv.folds = 0)
@@ -349,8 +376,7 @@ for(i in seq_len(nrow(tgrid))){
 tgrid %>% arrange(oob_err)
 
 # Fit the optimal GBM
-set.seed(123)
-GB_GLM <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+offset(lnexpo),
+GB_GLM <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long+offset(lnexpo),
               data = train.data, distribution = 'poisson', var.monotone = NULL,
               n.trees = tgrid$ntrees[1], interaction.depth = tgrid$depth[1], n.minobsinnode = 1000, shrinkage = 0.1,
               bag.fraction = 0.75, cv.folds = 0)
@@ -370,10 +396,11 @@ g9=plot(GB_GLM, i.var = c(3,6), lwd = 2, col = "blue", main = "")
 g9
 
 # Let's predict the annual expected claim frequency for some profiles extracted from test.data
-pred_GB_GLM=predict(GB_GLM, newdata = test.data[25:27,], type = "response", n.trees = 111) + test.data$lnexpo[23:25]
+pred_GB_GLM=predict(GB_GLM, newdata = test.data[23:25,], type = "response", n.trees = 93) 
+Pred_freq_final_GB <- pred_GB_GLM*test.data$expo[23:25]
 
 # compute the test error as a function of number of trees
-n.trees = seq(from=1 ,to=111, by=1) #no of trees-a vector of 111 values 
+n.trees = seq(from=1 ,to=93, by=1) #no of trees-a vector of 93 values 
 #Generating a Prediction matrix for each Tree
 predmatrix<-predict(GB_GLM,test.data,n.trees = n.trees, type = "response")
 dim(predmatrix) #dimentions of the Prediction Matrix
@@ -386,6 +413,33 @@ Min_test_MSE_GB_GLM=min(test_MSE_GB_GLM)
 plot(n.trees , test_MSE_GB_GLM , pch=19,col="blue",xlab="Number of Trees",ylab="Test Error", main = "Perfomance of Boosting on Test Set")
 abline(h = min(test_MSE_GB_GLM),col="red")
 legend("topright",c("Min. MSTE"),col="red",lty=1,lwd=1)
+
+# Let's represent the GBM results by Spatial Data
+pred2 <- predict(GB_GLM, newdata=post_dt, type = "response", n.trees = 93)
+dt_pred2 <- tibble(pc = post_dt$POSTCODE, long = post_dt$long, lat = post_dt$lat, pred2)
+names(dt_pred2)[4] <- "fit_spatial2" 
+
+dt_pred2 <- dplyr::arrange(dt_pred2, post_dt$POSTCODE)
+
+post_freq2 <- dt_pred2 %>% group_by(pc) %>% summarize(num = n(), total_freq2 = sum(fit_spatial2)) 
+post_freq2 %>% slice(1:5)
+
+belgium_shape_sf <- left_join(belgium_shape_sf, post_freq2, by = c("POSTCODE" = "pc"))
+belgium_shape_sf$freq2 <- belgium_shape_sf$total_freq2/belgium_shape_sf$Shape_Area
+
+belgium_shape_sf$freq_class <- cut(belgium_shape_sf$freq2, breaks = quantile(belgium_shape_sf$freq2, c(0,0.2,0.8,1), na.rm = TRUE),
+                                   right = FALSE, include.lowest = TRUE, labels = c("low", "average", "high"))
+ggplot(belgium_shape_sf) +
+  geom_sf(aes(fill = freq_class), colour = "black", size = 0.1) +
+  ggtitle("DB claim frequency data") + labs(fill = "Relative\nfreq") +
+  scale_fill_brewer(palette = "Blues", na.value = "white") + 
+  theme_bw()
+
+belgium_shape_sf <- st_simplify(belgium_shape_sf, dTolerance = 0.00001)
+tm_shape(belgium_shape_sf) + tm_borders(col = "black") + 
+  tm_fill(col = "freq_class", style = "cont", palette = "Blues", colorNA = "white")
+tmap_leaflet(tmap_last())
+
 
 #---------------------------- 4. Severity Modelling ------------------------------
 #---------------------------- 4.1 GLM ------------------------------
