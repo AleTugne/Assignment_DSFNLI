@@ -8,6 +8,7 @@ library(caret)
 library(classInt)
 library(gbm)
 library(plotmo)
+library(car)
 # The previous packages have to be installed
 library(tidyverse)
 library(rgdal)
@@ -130,8 +131,9 @@ g2
 plot.eda.nclaims <- ggplot.bar(DB, variable = DB$nbrtotc, "nclaims") + xlab("Number of claims") + ylab("%")
 #Exposure
 plot.eda.exp <- ggplot.hist(DB, DB$expo, "expo", 0.05) + xlab("Exposure to risk") + ylab("%")
-#Severity --> it wil be modelled in section 4.1 - 4.2
-plot.eda.sev <- DB %>% filter(chargtot > 0) %>% 
+#Severity (in reality is the total amount charged) --> it wil be modelled in section 4.1 - 4.2
+severity = DB %>% filter(chargtot > 0)
+plot.eda.sev <- severity %>% 
   ggplot(aes(chargtot)) + 
   geom_density(adjust = 3, col = KULbg, fill = KULbg, alpha = 0.5) + 
   xlim(0, 1e4) + ylab("%") + xlab("Total claim amount") + theme_bw()
@@ -217,7 +219,7 @@ g5
 # of them to zero.
 
 # To implement that reasoning, we will use the glmnet package (dropping commune, INS, codposs, expo, nbrtotan, chargtot) --> https://web.stanford.edu/~hastie/glmnet/glmnet_alpha.html 
-xmatrix <- model.matrix(nbrtotc ~ ageph+lat+long+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, data=train.data)[,-1]
+xmatrix <- model.matrix(nbrtotc ~ ageph+lat+long+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp, data=train.data)[,-1]
 
 set.seed(100)
 # we have to find the best value of lambda (the one which minimizes the TMSE), so we will use Cross Validation
@@ -230,7 +232,7 @@ lasso_GLM_freq <- glmnet(y=train.data$nbrtotc, xmatrix, family='poisson', offset
 coef(lasso_GLM_freq, s=lasso_GLM_freq_CV$lambda.min)
 plot_glmnet(lasso_GLM_freq, label=5, xvar="norm")  # label the 5 biggest final coefs
  
- 
+
 # the last plot say us the most relevant covariates for the dependent variable, if their path is above 0, they have a 
 # positive relation with nbrtotc and vice versa --> https://stats.stackexchange.com/questions/154825/what-to-conclude-from-this-lasso-plot-glmnet
 # the most important thing is the above axis: the dof are the variable that are not zero for a particular level of lambda, 
@@ -238,45 +240,82 @@ plot_glmnet(lasso_GLM_freq, label=5, xvar="norm")  # label the 5 biggest final c
 
 #To end, we cannot take a summary table of our regression --> https://stackoverflow.com/questions/12937331/why-is-it-inadvisable-to-get-statistical-summary-information-for-regression-coef 
 
-# Graphs representing some covariates used wrt number of claim frequency
-DB %>% summarize(emp_freq = sum(nbrtotc) / sum(expo)) 
-freq_by_fuel <- DB %>% group_by(fuelc) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-freq_by_split <- DB %>% group_by(split) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-freq_by_lat <- DB %>% group_by(lat) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-freq_by_ageph <- DB %>% group_by(ageph) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+# Graphs representing the empirical distribution of the 5 most important variables in LASSO
+test.data %>% summarize(emp_freq = sum(nbrtotc) / sum(expo)) 
+freq_by_ageph <- test.data %>% group_by(ageph) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_powerc <- test.data %>% group_by(powerc) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_agecar <- test.data %>% group_by(agecar) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_fuel <- test.data %>% group_by(fuelc) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_split <- test.data %>% group_by(split) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
 
-g4 <- ggplot(freq_by_fuel, aes(x = fuelc, y = emp_freq)) + theme_bw() + 
+test.data$split <- factor(test.data$split, ordered = TRUE, levels = c("Once", "Twice", "Thrice", "Monthly"))
+freq_by_agecar$agecar <- factor(freq_by_agecar$agecar, ordered = TRUE, levels = c("0-1", "2-5", "6-10", ">10"))
+freq_by_powerc$powerc <- factor(freq_by_powerc$powerc, ordered = TRUE, levels = c("<66", "66-110", ">110"))
+
+g4 <- ggplot(freq_by_ageph, aes(x = ageph, y = emp_freq)) + theme_bw() + 
   geom_bar(stat = "identity", color = "red",
            fill = "orange", alpha = .5) + 
-  ggtitle("Empirical claim freq per fuel of the car")
-g4
+  ggtitle("Empirical claim freq per age of ph")
 
-g5 <- ggplot(freq_by_split, aes(x = split, y = emp_freq)) + theme_bw() +
+# It is worth mentioning that it is impossible to find the SE in LASSO prediction --> https://stats.stackexchange.com/questions/91462/standard-errors-for-lasso-prediction-using-r 
+
+g5 <- ggplot(freq_by_powerc, aes(x = powerc, y = emp_freq)) + theme_bw() +
+  geom_bar(stat = "identity", color = "red", 
+           fill = "orange", alpha = .5) + 
+  ggtitle("Empirical claim freq per power of the car")
+
+g6 <- ggplot(freq_by_agecar, aes(x = agecar, y = emp_freq)) + theme_bw() +
+  geom_bar(stat = "identity", color = "red", 
+           fill = "orange", alpha = .5) + 
+  ggtitle("Empirical claim freq per age of the car")
+
+g7 <- ggplot(freq_by_fuel, aes(x = fuelc, y = emp_freq)) + theme_bw() +
+  geom_bar(stat = "identity", color = "red", 
+           fill = "orange", alpha = .5) + 
+  ggtitle("Empirical claim freq per fuel")
+
+g8 <- ggplot(freq_by_split, aes(x = split, y = emp_freq)) + theme_bw() +
   geom_bar(stat = "identity", color = "red", 
            fill = "orange", alpha = .5) + 
   ggtitle("Empirical claim freq per payment split")
-g5
 
-g6 <- ggplot(freq_by_lat, aes(x = lat, y = emp_freq)) + theme_bw() +
-  geom_bar(stat = "identity", color = "red", 
-           fill = "orange", alpha = .5) + 
-  ggtitle("Empirical claim freq per latitude")
-g6
+g9 <- grid.arrange(g4,g5,g6,g7,g8)
+g9
 
-g7 <- ggplot(freq_by_ageph, aes(x = ageph, y = emp_freq)) + theme_bw() +
-  geom_bar(stat = "identity", color = "red", 
-           fill = "orange", alpha = .5) + 
-  ggtitle("Empirical claim freq per ageph")
-g7
-
-# representation of fitted values (predictions) for each claim class
-xnewmatrix <- model.matrix( ~ nbrtotc+ageph+lat+long+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, data=test.data)[,-1]
-lasso_GLM_freq_pred=predict(lasso_GLM_freq, newx=xnewmatrix[,2:20], s=lasso_GLM_freq_CV$lambda.min, type='response', newoffset=test.data$lnexpo)
+# Predictions
+xnewmatrix <- model.matrix( ~ nbrtotc+ageph+lat+long+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp, data=test.data)[,-1]
+lasso_GLM_freq_pred=predict(lasso_GLM_freq, newx=xnewmatrix[,2:19], s=lasso_GLM_freq_CV$lambda.min, type='response', newoffset=test.data$lnexpo)
 xnewmatrix2 <- as_tibble(xnewmatrix)
-box1 <- ggplot(xnewmatrix2, aes(as.factor(nbrtotc), lasso_GLM_freq_pred)) + 
+lasso_GLM_freq_pred=as_tibble(lasso_GLM_freq_pred)
+test.data_LASSO_GLM_freq=data.frame(test.data,lasso_GLM_freq_pred$"1")
+test.data_LASSO_GLM_freq <- rename(test.data_LASSO_GLM_freq, lasso_GLM_freq_pred = lasso_GLM_freq_pred..1.)
+
+# Graphs representing the predicted distribution of the 5 most important variables in LASSO
+freq_by_ageph_LASSO <- test.data_LASSO_GLM_freq %>% group_by(ageph) %>% summarize(pred.freq=sum(lasso_GLM_freq_pred)/sum(expo))
+g10 <- ggplot(freq_by_ageph_LASSO, aes(x = ageph, y = pred.freq)) + theme_bw() + 
+  geom_bar(stat="identity",color = "red", fill = "orange", alpha = .5) + 
+  ggtitle("Predicted claim freq per age of ph")
+g10
+
+g11 <- ggplot(test.data_LASSO_GLM_freq, aes(as.factor(powerc), lasso_GLM_freq_pred)) + 
   geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
-  xlab("Claims") + ylab("Fitted Values")
-box1
+  xlab("power of the car") + ylab("Fitted Values")
+g11
+
+g12 <- ggplot(test.data_LASSO_GLM_freq, aes(as.factor(agecar), lasso_GLM_freq_pred)) + 
+  geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
+  xlab("age of the car") + ylab("Fitted Values")
+g12
+
+g13 <- ggplot(test.data_LASSO_GLM_freq, aes(as.factor(fuelc), lasso_GLM_freq_pred)) + 
+  geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
+  xlab("fuel of the car") + ylab("Fitted Values")
+g13
+
+g14 <- ggplot(test.data_LASSO_GLM_freq, aes(as.factor(split), lasso_GLM_freq_pred)) + 
+  geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
+  xlab("payment split") + ylab("Fitted Values")
+g14
 
 # Let's calculate the Test MSE which will be used to compare the GLM with the Machine Learning Method
 test_MSE_lasso_GLM <- mean((xnewmatrix2$nbrtotc - lasso_GLM_freq_pred) ^ 2) 
@@ -310,7 +349,7 @@ post_dt$powerc <- test.data$powerc[1]
 post_dt$coverp <- test.data$coverp[1]
 
 post_dt <- as_tibble(post_dt)
-xnewmatrix3 <- model.matrix( ~ ageph+lat+long+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, data=post_dt)[,-1]
+xnewmatrix3 <- model.matrix( ~ ageph+lat+long+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp, data=post_dt)[,-1]
 
 pred <- predict(lasso_GLM_freq, newx=xnewmatrix3, type = "response", s=lasso_GLM_freq_CV$lambda.min, newoffset=test.data$lnexpo)
 dt_pred <- tibble(pc = post_dt$POSTCODE, long = post_dt$long, lat = post_dt$lat, pred)
@@ -385,19 +424,20 @@ summary(GB_GLM)
 print(GB_GLM)
 
 # Partial Dependence Plot (PDP) for ageph
-g8=plot(GB_GLM, i.var = 3, lwd = 2, col = "blue", main = "")
-g8
+g15=plot(GB_GLM, i.var = 3, lwd = 2, col = "blue", main = "")
+g15
 
 # Let's check the correlation coef
 cor(train.data$ageph,train.data$nbrtotc) #negative correlation coeff --> proven
 
 # Partial Dependence Plot (PDP) for ageph:sexp
-g9=plot(GB_GLM, i.var = c(3,6), lwd = 2, col = "blue", main = "")
-g9
+g16=plot(GB_GLM, i.var = c(3,6), lwd = 2, col = "blue", main = "")
+g16
 
 # Let's predict the annual expected claim frequency for some profiles extracted from test.data
 pred_GB_GLM=predict(GB_GLM, newdata = test.data[23:25,], type = "response", n.trees = 93) 
 Pred_freq_final_GB <- pred_GB_GLM*test.data$expo[23:25]
+
 
 # compute the test error as a function of number of trees
 n.trees = seq(from=1 ,to=93, by=1) #no of trees-a vector of 93 values 
@@ -440,29 +480,44 @@ tm_shape(belgium_shape_sf) + tm_borders(col = "black") +
   tm_fill(col = "freq_class", style = "cont", palette = "Blues", colorNA = "white")
 tmap_leaflet(tmap_last())
 
-
 #---------------------------- 4. Severity Modelling ------------------------------
 #---------------------------- 4.1 GLM ------------------------------
 
-# Claim severity is highly skewed (to the right), so to model it we can use the Gamma distribution
-# This is used when the waiting times between two events in a process follow a Poisson Process
-# This distribution has two parameters: 
-# - k = number of occurrencies of an event
-# - θ = 1/λ is the mean number of events per time unit (λ is the mean time between events)
+# Claim severity is highly skewed (to the right), so to model it we can use the Gamma distribution or the 
+# log-normal one. We will use the latter since (for the sake of reproducibility) the function glmnet doesn't 
+# support the gamma distribution 
 
-# Let's plot the severity
-plot.eda.sev
-100*sum(DB$chargtot == 0)/nrow(DB)  #88%
-# the main characteristic of the Gamma is that all the outcomes must be positive,
-# Here we have that the 88% of the observations are 0, so we have to split the DB 
-# into observations without loss and observations with losses
-#
+# to model the severity we define a new variable, AvClAm = chargtot/nbrtotc that is the average cost of a claim
+train.data_sev=train.data %>% filter(chargtot > 0 & chargtot<81000)
+train.data %>% filter(chargtot > 0 & chargtot>81000) # 18 observations not included in the train.set because exceed the threshold
+test.data_sev=test.data %>% filter(chargtot > 0 & chargtot<81000)
+test.data %>% filter(chargtot > 0 & chargtot>81000) # 3 observations not included in the train.set because exceed the threshold
+train.data_sev$log_AvClAm = log(train.data_sev$chargtot/train.data_sev$nbrtotc)
+test.data_sev$log_AvClAm = log(test.data_sev$chargtot/test.data_sev$nbrtotc)
 
+# we want to prove that the AvClAm variable is lognormally distributed, so we transform the variable and we make a QQPlot of that
+qqnorm(train.data_sev$log_AvClAm)
+qqline(train.data_sev$log_AvClAm, col="red")
 
+# as we can see the observed values are close to the theoretical line, so we can conclude that it is log-normally distributed
 
+# let's start the Lasso
+xmatrix <- model.matrix(log_AvClAm ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp, data=train.data_sev)[,-1]
 
+set.seed(100)
+# we have to find the best value of lambda (the one which minimizes the TMSE), so we will use Cross Validation
+lasso_GLM_sev_CV <- cv.glmnet(y=train.data_sev$log_AvClAm, xmatrix, family='gaussian', type.measure="mse", standardize=TRUE) #10F CV
+plot(lasso_GLM_sev_CV)
+lasso_GLM_sev_CV$lambda.min  # the minimum value of lambda
+coef(lasso_GLM_sev_CV, s = "lambda.min") # the corresponding coefficients
 
+lasso_GLM_sev <- glmnet(y=train.data_sev$log_AvClAm, xmatrix, family='gaussian', type.measure="mse", standardize=TRUE, s=lasso_GLM_sev_CV$lambda.min)
+coef(lasso_GLM_sev, s=lasso_GLM_sev_CV$lambda.min)
+plot_glmnet(lasso_GLM_sev, label=5, xvar="norm")  # label the 5 biggest final coefs
 
+# representation of fitted values (predictions) for the severity
+xnewmatrix <- model.matrix( ~ log_AvClAm+lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp, data=test.data_sev)[,-1]
+lasso_GLM_sev_pred=predict(lasso_GLM_sev, newx=xnewmatrix[,2:19], s=lasso_GLM_sev_CV$lambda.min, type='response')
 
 
 
