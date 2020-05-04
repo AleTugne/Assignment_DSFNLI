@@ -219,7 +219,7 @@ g5
 # of them to zero.
 
 # To implement that reasoning, we will use the glmnet package (dropping commune, INS, codposs, expo, nbrtotan, chargtot) --> https://web.stanford.edu/~hastie/glmnet/glmnet_alpha.html 
-xmatrix <- model.matrix(nbrtotc ~ ageph+lat+long+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp, data=train.data)[,-1]
+xmatrix <- model.matrix(nbrtotc ~ agephagecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, data=train.data)[,-1]
 
 set.seed(100)
 # we have to find the best value of lambda (the one which minimizes the TMSE), so we will use Cross Validation
@@ -283,7 +283,7 @@ g9 <- grid.arrange(g4,g5,g6,g7,g8)
 g9
 
 # Predictions
-xnewmatrix <- model.matrix( ~ nbrtotc+ageph+lat+long+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp, data=test.data)[,-1]
+xnewmatrix <- model.matrix( ~ nbrtotc+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, data=test.data)[,-1]
 lasso_GLM_freq_pred=predict(lasso_GLM_freq, newx=xnewmatrix[,2:19], s=lasso_GLM_freq_CV$lambda.min, type='response', newoffset=test.data$lnexpo)
 xnewmatrix2 <- as_tibble(xnewmatrix)
 lasso_GLM_freq_pred=as_tibble(lasso_GLM_freq_pred)
@@ -400,7 +400,7 @@ tgrid <- expand.grid('depth' = c(1,3,5), 'ntrees' = NA, 'oob_err' = NA)
 for(i in seq_len(nrow(tgrid))){
   set.seed(100) 
   # Fit a GBM
-  GB_GLM <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long+offset(lnexpo),
+  GB_GLM <- gbm(nbrtotc ~ ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long+offset(lnexpo),
            data = train.data, distribution = 'poisson', var.monotone = NULL,
            n.trees = 200, interaction.depth = tgrid$depth[i], n.minobsinnode = 1000, shrinkage = 0.1,
            bag.fraction = 0.75, cv.folds = 0)
@@ -415,7 +415,7 @@ for(i in seq_len(nrow(tgrid))){
 tgrid %>% arrange(oob_err)
 
 # Fit the optimal GBM
-GB_GLM <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long+offset(lnexpo),
+GB_GLM <- gbm(nbrtotc ~ ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long+offset(lnexpo),
               data = train.data, distribution = 'poisson', var.monotone = NULL,
               n.trees = tgrid$ntrees[1], interaction.depth = tgrid$depth[1], n.minobsinnode = 1000, shrinkage = 0.1,
               bag.fraction = 0.75, cv.folds = 0)
@@ -424,20 +424,23 @@ summary(GB_GLM)
 print(GB_GLM)
 
 # Partial Dependence Plot (PDP) for ageph
-g15=plot(GB_GLM, i.var = 3, lwd = 2, col = "blue", main = "")
+g15=plot(GB_GLM, i.var = 1, lwd = 2, col = "blue", main = "", type="response")
 g15
 
 # Let's check the correlation coef
 cor(train.data$ageph,train.data$nbrtotc) #negative correlation coeff --> proven
 
-# Partial Dependence Plot (PDP) for ageph:sexp
-g16=plot(GB_GLM, i.var = c(3,6), lwd = 2, col = "blue", main = "")
+# Partial Dependence Plot (PDP) for split
+g16=plot(GB_GLM, i.var = 6, lwd = 1, col = "blue", main = "", type="response")
 g16
+
+# Partial Dependence Plot (PDP) for fuel
+g17=plot(GB_GLM, i.var = 5, lwd = 1, col = "blue", main = "", type="response")
+g17
 
 # Let's predict the annual expected claim frequency for some profiles extracted from test.data
 pred_GB_GLM=predict(GB_GLM, newdata = test.data[23:25,], type = "response", n.trees = 93) 
 Pred_freq_final_GB <- pred_GB_GLM*test.data$expo[23:25]
-
 
 # compute the test error as a function of number of trees
 n.trees = seq(from=1 ,to=93, by=1) #no of trees-a vector of 93 values 
