@@ -85,6 +85,7 @@ plot.eda.fleet <- ggplot.bar(DB, DB$fleetc, "fleet") + xlab("Fleet")
 plot.eda.sport <- ggplot.bar(DB, DB$sportc, "sport") + xlab("Sport Car")
 plot.eda.cover <- ggplot.bar(DB, DB$coverp, "cover") + xlab("Type of Coverage")
 plot.eda.power <- ggplot.bar(DB, DB$powerc, "power") + xlab("Power of the car")
+
 #Chargtot*ageph, left skewed distribution 
 DB_chargtot <- DB %>% filter(chargtot > 0)
 plot.eda.chargtot_ageph <- ggplot(DB_chargtot, aes(x=ageph))+geom_density(adjust = 5, col = KULbg, fill = KULbg, alpha = 0.5)+
@@ -188,7 +189,6 @@ tmap_leaflet(tmap_last())
 # plotting the frequency and severity
 plot.eda.nclaims
 
-
 # Some further analysis
 # Let us count the proportion of 0 in chargtot, lnexpo and nbrtotc
 100*sum(DB$chargtot == 0)/nrow(DB)  #88%
@@ -199,7 +199,6 @@ g4
 
 # From here we can see that the number of 0 is important, so we have to think about switching from a 
 # Poisson GLM to a Zero-Inflated Poisson GLM
-
 
 ### Now, given the high proportion of 0, we will fit the best Cross-Validated 
 ### (using glmulti and Validation approach with {caret}, splitting the data into training (80%) and test (20%) set) 
@@ -232,7 +231,7 @@ g5
 # of them to zero.
 
 # To implement that reasoning, we will use the glmnet package (dropping commune, INS, codposs, expo, nbrtotan, chargtot) --> https://web.stanford.edu/~hastie/glmnet/glmnet_alpha.html 
-xmatrix <- model.matrix(nbrtotc ~ agephagecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, data=train.data)[,-1]
+xmatrix <- model.matrix(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, data=train.data)[,-1]
 
 set.seed(100)
 # we have to find the best value of lambda (the one which minimizes the TMSE), so we will use Cross Validation
@@ -296,8 +295,8 @@ g9 <- grid.arrange(g4,g5,g6,g7,g8)
 g9
 
 # Predictions
-xnewmatrix <- model.matrix( ~ nbrtotc+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, data=test.data)[,-1]
-lasso_GLM_freq_pred=predict(lasso_GLM_freq, newx=xnewmatrix[,2:19], s=lasso_GLM_freq_CV$lambda.min, type='response', newoffset=test.data$lnexpo)
+xnewmatrix <- model.matrix( ~ lat+long+nbrtotc+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, data=test.data)[,-1]
+lasso_GLM_freq_pred=predict(lasso_GLM_freq, newx=xnewmatrix[,2:20], s=lasso_GLM_freq_CV$lambda.min, type='response', newoffset=test.data$lnexpo)
 xnewmatrix2 <- as_tibble(xnewmatrix)
 lasso_GLM_freq_pred=as_tibble(lasso_GLM_freq_pred)
 test.data_LASSO_GLM_freq=data.frame(test.data,lasso_GLM_freq_pred$"1")
@@ -308,27 +307,25 @@ freq_by_ageph_LASSO <- test.data_LASSO_GLM_freq %>% group_by(ageph) %>% summariz
 g10 <- ggplot(freq_by_ageph_LASSO, aes(x = ageph, y = pred.freq)) + theme_bw() + 
   geom_bar(stat="identity",color = "red", fill = "orange", alpha = .5) + 
   ggtitle("Predicted claim freq per age of ph")
-g10
 
 g11 <- ggplot(test.data_LASSO_GLM_freq, aes(as.factor(powerc), lasso_GLM_freq_pred)) + 
   geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
   xlab("power of the car") + ylab("Fitted Values")
-g11
 
 g12 <- ggplot(test.data_LASSO_GLM_freq, aes(as.factor(agecar), lasso_GLM_freq_pred)) + 
   geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
   xlab("age of the car") + ylab("Fitted Values")
-g12
 
 g13 <- ggplot(test.data_LASSO_GLM_freq, aes(as.factor(fuelc), lasso_GLM_freq_pred)) + 
   geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
   xlab("fuel of the car") + ylab("Fitted Values")
-g13
 
 g14 <- ggplot(test.data_LASSO_GLM_freq, aes(as.factor(split), lasso_GLM_freq_pred)) + 
   geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
   xlab("payment split") + ylab("Fitted Values")
-g14
+
+g15 <- grid.arrange(g10,g11,g12,g13,g14)
+g15
 
 # Let's calculate the Test MSE which will be used to compare the GLM with the Machine Learning Method
 test_MSE_lasso_GLM <- mean((xnewmatrix2$nbrtotc - lasso_GLM_freq_pred) ^ 2) 
@@ -362,7 +359,7 @@ post_dt$powerc <- test.data$powerc[1]
 post_dt$coverp <- test.data$coverp[1]
 
 post_dt <- as_tibble(post_dt)
-xnewmatrix3 <- model.matrix( ~ ageph+lat+long+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp, data=post_dt)[,-1]
+xnewmatrix3 <- model.matrix( ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, data=post_dt)[,-1]
 
 pred <- predict(lasso_GLM_freq, newx=xnewmatrix3, type = "response", s=lasso_GLM_freq_CV$lambda.min, newoffset=test.data$lnexpo)
 dt_pred <- tibble(pc = post_dt$POSTCODE, long = post_dt$long, lat = post_dt$lat, pred)
@@ -413,7 +410,7 @@ tgrid <- expand.grid('depth' = c(1,3,5), 'ntrees' = NA, 'oob_err' = NA)
 for(i in seq_len(nrow(tgrid))){
   set.seed(100) 
   # Fit a GBM
-  GB_GLM <- gbm(nbrtotc ~ ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long+offset(lnexpo),
+  GB_GLM <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long+offset(lnexpo),
            data = train.data, distribution = 'poisson', var.monotone = NULL,
            n.trees = 200, interaction.depth = tgrid$depth[i], n.minobsinnode = 1000, shrinkage = 0.1,
            bag.fraction = 0.75, cv.folds = 0)
@@ -428,7 +425,7 @@ for(i in seq_len(nrow(tgrid))){
 tgrid %>% arrange(oob_err)
 
 # Fit the optimal GBM
-GB_GLM <- gbm(nbrtotc ~ ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long+offset(lnexpo),
+GB_GLM <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long+offset(lnexpo),
               data = train.data, distribution = 'poisson', var.monotone = NULL,
               n.trees = tgrid$ntrees[1], interaction.depth = tgrid$depth[1], n.minobsinnode = 1000, shrinkage = 0.1,
               bag.fraction = 0.75, cv.folds = 0)
@@ -518,7 +515,7 @@ qqline(train.data_sev$log_AvClAm, col="red")
 # as we can see the observed values are close to the theoretical line, so we can conclude that it is log-normally distributed
 
 # let's start the Lasso
-xmatrix <- model.matrix(log_AvClAm ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp, data=train.data_sev)[,-1]
+xmatrix <- model.matrix(log_AvClAm ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, data=train.data_sev)[,-1]
 
 set.seed(100)
 # we have to find the best value of lambda (the one which minimizes the TMSE), so we will use Cross Validation
@@ -532,7 +529,7 @@ coef(lasso_GLM_sev, s=lasso_GLM_sev_CV$lambda.min)
 plot_glmnet(lasso_GLM_sev, label=5, xvar="norm")  # label the 5 biggest final coefs
 
 # representation of fitted values (predictions) for the severity
-xnewmatrix <- model.matrix( ~ log_AvClAm+lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp, data=test.data_sev)[,-1]
+xnewmatrix <- model.matrix( ~ log_AvClAm+lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, data=test.data_sev)[,-1]
 lasso_GLM_sev_pred=predict(lasso_GLM_sev, newx=xnewmatrix[,2:19], s=lasso_GLM_sev_CV$lambda.min, type='response')
 
 
