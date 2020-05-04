@@ -90,6 +90,7 @@ plot.eda.power <- ggplot.bar(DB, DB$powerc, "power") + xlab("Power of the car")
 DB_chargtot <- DB %>% filter(chargtot > 0)
 plot.eda.chargtot_ageph <- ggplot(DB_chargtot, aes(x=ageph))+geom_density(adjust = 5, col = KULbg, fill = KULbg, alpha = 0.5)+
 xlim(5,95)+xlab("Chargtot per age")+scale_x_continuous(breaks = scales::pretty_breaks(n = 10))
+plot.eda.chargtot_ageph
 
 #Chargtot*carPower , I thought more powerful car could have higher severities.
 plot.eda.chargtot_powcar <-ggplot(DB_chargtot,aes( x = powerc, y = chargtot))+geom_boxplot(col = KULbg, fill = KULbg, alpha = 0.5)+ylab("claim severity")
@@ -149,8 +150,9 @@ variance
 
 #Exposure
 plot.eda.exp <- ggplot.hist(DB, DB$expo, "expo", 0.05) + xlab("Exposure to risk") + ylab("%")
+
 #Severity (in reality is the total amount charged) --> it wil be modelled in section 4.1 - 4.2
-severity = DB %>% filter(chargtot > 0)
+severity = DB %>% filter(chargtot > 0 & chargtot<81000)
 plot.eda.sev <- severity %>% 
   ggplot(aes(chargtot)) + 
   geom_density(adjust = 3, col = KULbg, fill = KULbg, alpha = 0.5) + 
@@ -269,8 +271,6 @@ g4 <- ggplot(freq_by_ageph, aes(x = ageph, y = emp_freq)) + theme_bw() +
            fill = "orange", alpha = .5) + 
   ggtitle("Empirical claim freq per age of ph")
 
-# It is worth mentioning that it is impossible to find the SE in LASSO prediction --> https://stats.stackexchange.com/questions/91462/standard-errors-for-lasso-prediction-using-r 
-
 g5 <- ggplot(freq_by_powerc, aes(x = powerc, y = emp_freq)) + theme_bw() +
   geom_bar(stat = "identity", color = "red", 
            fill = "orange", alpha = .5) + 
@@ -301,6 +301,8 @@ xnewmatrix2 <- as_tibble(xnewmatrix)
 lasso_GLM_freq_pred=as_tibble(lasso_GLM_freq_pred)
 test.data_LASSO_GLM_freq=data.frame(test.data,lasso_GLM_freq_pred$"1")
 test.data_LASSO_GLM_freq <- rename(test.data_LASSO_GLM_freq, lasso_GLM_freq_pred = lasso_GLM_freq_pred..1.)
+
+# It is worth mentioning that it is impossible to find the SE in LASSO prediction --> https://stats.stackexchange.com/questions/91462/standard-errors-for-lasso-prediction-using-r 
 
 # Graphs representing the predicted distribution of the 5 most important variables in LASSO
 freq_by_ageph_LASSO <- test.data_LASSO_GLM_freq %>% group_by(ageph) %>% summarize(pred.freq=sum(lasso_GLM_freq_pred)/sum(expo))
@@ -528,11 +530,30 @@ lasso_GLM_sev <- glmnet(y=train.data_sev$log_AvClAm, xmatrix, family='gaussian',
 coef(lasso_GLM_sev, s=lasso_GLM_sev_CV$lambda.min)
 plot_glmnet(lasso_GLM_sev, label=5, xvar="norm")  # label the 5 biggest final coefs
 
-# representation of fitted values (predictions) for the severity
+# Predictions
 xnewmatrix <- model.matrix( ~ log_AvClAm+lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, data=test.data_sev)[,-1]
 lasso_GLM_sev_pred=predict(lasso_GLM_sev, newx=xnewmatrix[,2:19], s=lasso_GLM_sev_CV$lambda.min, type='response')
+xnewmatrix2 <- as_tibble(xnewmatrix)
+lasso_GLM_sev_pred2=as_tibble(lasso_GLM_sev_pred)
+test.data_LASSO_GLM_sev=data.frame(test.data_sev,lasso_GLM_sev_pred2$"1")
+test.data_LASSO_GLM_sev <- rename(test.data_LASSO_GLM_sev, lasso_GLM_sev_pred = lasso_GLM_sev_pred..1.)
 
+# Graphs representing the predicted distribution of the 5 most important variables in LASSO
+g18 <- ggplot(test.data_LASSO_GLM_sev, aes(as.factor(split), lasso_GLM_sev_pred)) + 
+  geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
+  xlab("payment split") + ylab("Fitted Values")
+g18
 
+g19 <- ggplot(test.data_LASSO_GLM_sev, aes(as.factor(coverp), lasso_GLM_sev_pred)) + 
+  geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
+  xlab("Insurance Coverage") + ylab("Fitted Values")
+g19
 
+# Let's calculate the Test MSE which will be used to compare the GLM with the Machine Learning Method
+test_MSE_lasso_GLM <- mean((xnewmatrix2$log_AvClAm - lasso_GLM_sev_pred) ^ 2) 
+#actually Mean Squared Prediction Error
+
+# Let's predict the annual expected claim frequency for some profiles extracted from test.data
+PredSevLassoGLM <- predict(lasso_GLM_sev, newx=xnewmatrix[23:25,2:19], s=lasso_GLM_sev_CV$lambda.min, type='response')
 
 #---------------------------- 4.2 Gradient Boosting ------------------------------
