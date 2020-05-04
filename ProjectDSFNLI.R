@@ -85,8 +85,18 @@ plot.eda.fleet <- ggplot.bar(DB, DB$fleetc, "fleet") + xlab("Fleet")
 plot.eda.sport <- ggplot.bar(DB, DB$sportc, "sport") + xlab("Sport Car")
 plot.eda.cover <- ggplot.bar(DB, DB$coverp, "cover") + xlab("Type of Coverage")
 plot.eda.power <- ggplot.bar(DB, DB$powerc, "power") + xlab("Power of the car")
+#Chargtot*ageph, left skewed distribution 
+DB_chargtot <- DB %>% filter(chargtot > 0)
+plot.eda.chargtot_ageph <- ggplot(DB_chargtot, aes(x=ageph))+geom_density(adjust = 5, col = KULbg, fill = KULbg, alpha = 0.5)+
+xlim(5,95)+xlab("Chargtot per age")+scale_x_continuous(breaks = scales::pretty_breaks(n = 10))
 
-g1 <- grid.arrange(plot.eda.sex, plot.eda.ageph, plot.eda.fuel, plot.eda.use, plot.eda.split, plot.eda.agecar, plot.eda.fleet, plot.eda.sport, plot.eda.cover, plot.eda.power)
+#Chargtot*carPower , I thought more powerful car could have higher severities.
+plot.eda.chargtot_powcar <-ggplot(DB_chargtot,aes( x = powerc, y = chargtot))+geom_boxplot(col = KULbg, fill = KULbg, alpha = 0.5)+ylab("claim severity")
+plot.eda.chargtot_powcar
+
+g1 <- grid.arrange(plot.eda.sex, plot.eda.ageph, plot.eda.fuel, plot.eda.use,
+                   plot.eda.split, plot.eda.agecar, plot.eda.fleet, plot.eda.sport, plot.eda.cover,
+                   plot.eda.power,plot.eda.chargtot_ageph,plot.eda.chargtot_powcar)
 g1
 
 # Proposta 2 - Piecharts
@@ -129,6 +139,13 @@ g2
 
 #Frequency --> it will be modelled in section 3.1 - 3.2
 plot.eda.nclaims <- ggplot.bar(DB, variable = DB$nbrtotc, "nclaims") + xlab("Number of claims") + ylab("%")
+
+mean(DB$nbrtotc)
+mean <- sum(DB$nbrtotc)/sum(DB$expo)
+mean
+variance <- sum((DB$nbrtotc - mean * DB$expo)^2)/sum(DB$expo)
+variance
+
 #Exposure
 plot.eda.exp <- ggplot.hist(DB, DB$expo, "expo", 0.05) + xlab("Exposure to risk") + ylab("%")
 #Severity (in reality is the total amount charged) --> it wil be modelled in section 4.1 - 4.2
@@ -140,23 +157,6 @@ plot.eda.sev <- severity %>%
 
 g3 <- grid.arrange(plot.eda.nclaims, plot.eda.exp, plot.eda.sev)
 g3
-
-# Some analysis
-# Let us count the proportion of 0 in chargtot, lnexpo and nbrtotc
-100*sum(DB$chargtot == 0)/nrow(DB)  #88%
-g4 <- ggplot(DB, aes(chargtot)) + geom_histogram(bins=100) + scale_y_log10()
-g4
-100*sum(DB$lnexpo == 0)/nrow(DB)  #77%
-100*sum(DB$nbrtotc == 0)/nrow(DB)  #88%
-
-# From here we can see that the number of 0 is important, so we have to think about switching from a 
-# Poisson GLM to a Zero-Inflated Poisson GLM
-
-mean(DB$nbrtotc)
-mean <- sum(DB$nbrtotc)/sum(DB$expo)
-mean
-variance <- sum((DB$nbrtotc - mean * DB$expo)^2)/sum(DB$expo)
-variance
 
 #---------------------------- 2. Spatial Data ------------------------------
 belgium_shape_sf <- st_read('./shape file Belgie postcodes/npc96_region_Project1.shp', quiet = TRUE)
@@ -187,6 +187,19 @@ tmap_leaflet(tmap_last())
 #---------------------------- 3.1 GLM ------------------------------
 # plotting the frequency and severity
 plot.eda.nclaims
+
+
+# Some further analysis
+# Let us count the proportion of 0 in chargtot, lnexpo and nbrtotc
+100*sum(DB$chargtot == 0)/nrow(DB)  #88%
+g4 <- ggplot(DB, aes(chargtot)) + geom_histogram(bins=100) + scale_y_log10()
+g4
+100*sum(DB$lnexpo == 0)/nrow(DB)  #77%
+100*sum(DB$nbrtotc == 0)/nrow(DB)  #88%
+
+# From here we can see that the number of 0 is important, so we have to think about switching from a 
+# Poisson GLM to a Zero-Inflated Poisson GLM
+
 
 ### Now, given the high proportion of 0, we will fit the best Cross-Validated 
 ### (using glmulti and Validation approach with {caret}, splitting the data into training (80%) and test (20%) set) 
@@ -322,8 +335,8 @@ test_MSE_lasso_GLM <- mean((xnewmatrix2$nbrtotc - lasso_GLM_freq_pred) ^ 2)
 #actually Mean Squared Prediction Error
 
 # Check for over/underdispersion in the model
-mean(train.data$nbrtotc)
-var(train.data$nbrtotc)
+mean(lasso_GLM_freq_pred)
+var(lasso_GLM_freq_pred)
 # The fact that the variance is greater than the mean in our dependent variable confirm the assumption of overd.
 # We can actually try to reduce it by using mixed models as the Zero Inflated Model
 # but actually we can conclude that the GLM is not so efficient to fit the data, so we will use machine learning
