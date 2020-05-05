@@ -278,29 +278,29 @@ bar.freq.ageph.pred <- ggplot(freq_by_ageph_LASSO, aes(x = ageph, y = pred.freq)
                         geom_bar(stat="identity",color = KULbg, fill = KULbg, alpha = .5) + 
                           ggtitle("Predicted claim freq per age of P/h")
 
-ggplot.bar3 <- function(DT, variable, xlab){
+ggplot.box <- function(DT, variable, xlab){
   ggplot(data = DT, aes(x=as.factor(variable), y=lasso_GLM_freq_pred)) + theme_bw() + 
     geom_boxplot(outlier.colour=KULbg, outlier.shape=8, outlier.size=0.5) + labs(x = xlab, y = "Fitted Values")
 }
 
-bar.freq.powerc.pred <- ggplot.bar3(test.data_freq_pred, test.data_freq_pred$powerc, "powerc") +
+bar.freq.powerc.pred <- ggplot.box(test.data_freq_pred, test.data_freq_pred$powerc, "powerc") +
                           ggtitle("Predicted claim freq per power of the car")
 
-bar.freq.agecar.pred <- ggplot.bar3(test.data_freq_pred, test.data_freq_pred$agecar, "agecar") +
+bar.freq.agecar.pred <- ggplot.box(test.data_freq_pred, test.data_freq_pred$agecar, "agecar") +
                           ggtitle("Predicted claim freq per age of the car")
 
-bar.freq.fuelc.pred <- ggplot.bar3(test.data_freq_pred, test.data_freq_pred$fuelc, "fuelc") +
+bar.freq.fuelc.pred <- ggplot.box(test.data_freq_pred, test.data_freq_pred$fuelc, "fuelc") +
                         ggtitle("Predicted claim freq per fuel of the car")
 
-bar.freq.split.pred <- ggplot.bar3(test.data_freq_pred, test.data_freq_pred$split, "split") +
+bar.freq.split.pred <- ggplot.box(test.data_freq_pred, test.data_freq_pred$split, "split") +
                         ggtitle("Predicted claim freq per payment split")
 
-g15 <- grid.arrange(bar.freq.ageph.pred, bar.freq.powerc.pred, bar.freq.agecar.pred, bar.freq.fuelc.pred,
+g5 <- grid.arrange(bar.freq.ageph.pred, bar.freq.powerc.pred, bar.freq.agecar.pred, bar.freq.fuelc.pred,
                     bar.freq.split.pred)
-g15
+g5
 
 # Let's compute the Test MSE to compare GLM and GBM
-test_MSE_lasso_GLM <- mean((test.data_freq_pred$nbrtotc - test.data_freq_pred$lasso_GLM_freq_pred) ^ 2) 
+test_MSE_lasso_GLM_freq <- mean((test.data_freq_pred$nbrtotc - test.data_freq_pred$lasso_GLM_freq_pred) ^ 2) 
 #actually Mean Squared Prediction Error
 
 # Check for over/underdispersion in the model
@@ -422,8 +422,8 @@ n.trees <- seq(from=1, to=93, by=1)
 predmatrix <- predict(GB_freq, test.data_freq, n.trees = n.trees, type = "response")
 
 # Calculating The Mean Squared Test Error
-test_MSE_GB_GLM <- with(test.data_freq, apply((predmatrix-nbrtotc)^2, 2, mean))
-Min_test_MSE_GB_GLM <- min(test_MSE_GB_GLM)
+test_MSE_GB_freq <- with(test.data_freq, apply((predmatrix-nbrtotc)^2, 2, mean))
+Min_test_MSE_GB_freq <- min(test_MSE_GB_freq)
 
 # Plotting the test error vs number of trees
 plot(n.trees, test_MSE_GB_GLM, pch=19, col=KULbg, xlab="Number of Trees", ylab="Test Error", 
@@ -496,80 +496,83 @@ test.data_sev_pred <- data.frame(test.data_sev,lasso_GLM_sev_pred$"1")
 test.data_sev_pred <- rename(test.data_sev_pred, lasso_GLM_sev_pred = lasso_GLM_sev_pred..1.)
 
 # Let's predict the annual expected claim frequency for some profiles extracted from test.data
-sev_prediction_LASSO <- predict(lasso_GLM_sev, newx=xnewmatrix2[23:25,2:20], 
-                                s=lasso_GLM_sev_CV$lambda.min, type='response')
+sev_prediction_LASSO <- predict(lasso_GLM_sev, newx = xnewmatrix2[23:25,2:20], 
+                                s = lasso_GLM_sev_CV$lambda.min, type='response')
 
-# Graphs representing the predicted distribution of the 5 most important variables in LASSO
-g18 <- ggplot(test.data_LASSO_GLM_sev, aes(as.factor(split), lasso_GLM_sev_pred)) + 
-  geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
-  xlab("payment split") + ylab("Fitted Values")
-g18
+# Graphs representing the predicted distribution of the 2 most important variables in LASSO
+ggplot.box2 <- function(DT, variable, xlab){
+  ggplot(data = DT, aes(x=as.factor(variable), y=lasso_GLM_sev_pred)) + theme_bw() + 
+    geom_boxplot(outlier.colour=KULbg, outlier.shape=8, outlier.size=0.5) + labs(x = xlab, y = "Fitted Values")
+}
 
-g19 <- ggplot(test.data_LASSO_GLM_sev, aes(as.factor(coverp), lasso_GLM_sev_pred)) + 
-  geom_boxplot(outlier.colour="red", outlier.shape=8, outlier.size=0.5) + 
-  xlab("Insurance Coverage") + ylab("Fitted Values")
-g19
+bar.sev.powerc.pred <- ggplot.box2(test.data_sev_pred, test.data_sev_pred$split, "split") +
+                        ggtitle("Predicted claim freq per payment split")
 
-# Let's calculate the Test MSE which will be used to compare the GLM with the Machine Learning Method
-test_MSE_lasso_GLM <- mean((xnewmatrix2$log_AvClAm - lasso_GLM_sev_pred) ^ 2) 
+bar.sev.coverp.pred <- ggplot.box2(test.data_sev_pred, test.data_sev_pred$coverp, "coverp") +
+                        ggtitle("Predicted claim freq per cover")
+
+g6 <- grid.arrange(bar.sev.powerc.pred, bar.sev.coverp.pred)
+g6
+
+# Let's compute the Test MSE to compare GLM and GBM
+test_MSE_lasso_GLM_sev <- mean((test.data_sev_pred$log_AvClAm - test.data_sev_pred$lasso_GLM_sev_pred) ^ 2)
 #actually Mean Squared Prediction Error
 
 #---------------------------- 4.2 Gradient Boosting ------------------------------
+
 tgrid <- expand.grid('depth' = c(1,3,5), 'ntrees' = NA, 'oob_err' = NA)
 
 for(i in seq_len(nrow(tgrid))){
   set.seed(100) 
   # Fit a GBM
-  GB_GLM <- gbm(log_AvClAm ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long,
+  GB_sev <- gbm(log_AvClAm ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long,
                 data = train.data_sev, distribution = 'gaussian', var.monotone = NULL,
                 n.trees = 200, interaction.depth = tgrid$depth[i], n.minobsinnode = 1000, shrinkage = 0.1,
                 bag.fraction = 0.75, cv.folds = 0)
   
   # Retrieve the optimal number of trees
-  opt <- which.max(cumsum(GB_GLM$oobag.improve))
+  opt <- which.max(cumsum(GB_sev$oobag.improve))
   tgrid$ntrees[i] <- opt
-  tgrid$oob_err[i] <- sum(GB_GLM$oobag.improve[1:opt])
+  tgrid$oob_err[i] <- sum(GB_sev$oobag.improve[1:opt])
 }
 
 # Order results on the OOB error
 tgrid %>% arrange(oob_err)
 
 # Fit the optimal GBM
-GB_GLM <- gbm(log_AvClAm ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long,
+GB_sev <- gbm(log_AvClAm ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long,
               data = train.data_sev, distribution = 'gaussian', var.monotone = NULL,
               n.trees = tgrid$ntrees[1], interaction.depth = tgrid$depth[1], n.minobsinnode = 1000, shrinkage = 0.1,
               bag.fraction = 0.75, cv.folds = 0)
 
-summary(GB_GLM)
-print(GB_GLM)
+summary(GB_sev)
+print(GB_sev)
 
 # Partial Dependence Plot (PDP) for ageph
-g20=plot(GB_GLM, i.var = 3, lwd = 2, col = "blue", main = "")
-g20
+PDP_ageph <- plot(GB_sev, i.var = 3, lwd = 2, col = KULbg, main = "")
+PDP_ageph
 
 # Partial Dependence Plot (PDP) for split
-g21=plot(GB_GLM, i.var = 8, lwd = 1, col = "blue", main = "")
-g21
+PDP_split <- plot(GB_sev, i.var = 8, lwd = 1, col = KULbg, main = "")
+PDP_split
 
 # Partial Dependence Plot (PDP) for cover
-g22=plot(GB_GLM, i.var = 12, lwd = 1, col = "blue", main = "")
-g22
+PDP_cover = plot(GB_sev, i.var = 12, lwd = 1, col = KULbg, main = "")
+PDP_cover
 
 # Let's predict the annual expected claim frequency for some profiles extracted from test.data
-pred_GB_GLM=predict(GB_GLM, newdata = test.data_sev[23:25,], type = "response", n.trees = 39) 
-Pred_freq_final_GB <- exp(pred_GB_GLM)
+sev_prediction_GB <- predict(GB_sev, newdata = test.data_sev[23:25,], type = "response", n.trees = 35) 
 
-# compute the test error as a function of number of trees
-n.trees = seq(from=1 ,to=39, by=1) #no of trees-a vector of 93 values 
-#Generating a Prediction matrix for each Tree
-predmatrix<-predict(GB_GLM,test.data_sev,n.trees = n.trees, type = "response")
-dim(predmatrix) #dimentions of the Prediction Matrix
+# Compute the test error as a function of number of trees
+n.trees <- seq(from = 1, to = 35, by = 1) 
+predmatrix <- predict(GB_sev, test.data_sev, n.trees = n.trees, type = "response")
 
-#Calculating The Mean Squared Test Error
-test_MSE_GB_GLM<-with(test.data_sev,apply((predmatrix-log_AvClAm)^2,2,mean))
-head(test_MSE_GB_GLM) #contains the Mean squared test error for each of the 100 trees averaged
-Min_test_MSE_GB_GLM=min(test_MSE_GB_GLM)
-#Plotting the test error vs number of trees
-plot(n.trees , test_MSE_GB_GLM , pch=19,col="blue",xlab="Number of Trees",ylab="Test Error", main = "Perfomance of Boosting on Test Set")
-abline(h = min(test_MSE_GB_GLM),col="red")
-legend("topright",c("Min. MSTE"),col="red",lty=1,lwd=1)
+# Calculating The Mean Squared Test Error
+test_MSE_GB_sev <- with(test.data_sev, apply((predmatrix-log_AvClAm)^2, 2, mean))
+Min_test_MSE_GB_sev <- min(test_MSE_GB_sev)
+
+# Plotting the test error vs number of trees
+plot(n.trees, test_MSE_GB_sev, pch=19, col=KULbg, xlab="Number of Trees", ylab="Test Error", 
+     main = "Perfomance of Boosting on Test Set")
+abline(h = min(test_MSE_GB_sev), col="red")
+legend("topright", c("Min. MSTE"), col="red", lty=1, lwd=1)
