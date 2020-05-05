@@ -418,7 +418,7 @@ freq_prediction_GB <- (predict(GB_freq, newdata = test.data_freq[23:25,], type =
                         n.trees = 93))*test.data_freq$expo[23:25] 
 
 # Compute the test error as a function of number of trees
-n.trees <- seq(from=1, to=93, by=1) 
+n.trees <- seq(from = 1, to = 93, by = 1) 
 predmatrix <- predict(GB_freq, test.data_freq, n.trees = n.trees, type = "response")
 
 # Calculating The Mean Squared Test Error
@@ -426,9 +426,9 @@ test_MSE_GB_freq <- with(test.data_freq, apply((predmatrix-nbrtotc)^2, 2, mean))
 Min_test_MSE_GB_freq <- min(test_MSE_GB_freq)
 
 # Plotting the test error vs number of trees
-plot(n.trees, test_MSE_GB_GLM, pch=19, col=KULbg, xlab="Number of Trees", ylab="Test Error", 
+plot(n.trees, test_MSE_GB_freq, pch=19, col=KULbg, xlab="Number of Trees", ylab="Test Error", 
      main = "Perfomance of Boosting on Test Set")
-abline(h = min(test_MSE_GB_GLM), col="red")
+abline(h = min(test_MSE_GB_freq), col="red")
 legend("topright", c("Min. MSTE"), col="red", lty=1, lwd=1)
 
 # Let's represent the GBM results by Spatial Data
@@ -460,10 +460,10 @@ tmap_leaflet(tmap_last())
 #---------------------------- 4. Severity Modelling ------------------------------
 #---------------------------- 4.1 GLM ------------------------------
 
-train.data_sev=train.data %>% filter(chargtot > 0 & chargtot < 81000)
-train.data %>% filter(chargtot > 0 & chargtot > 81000) # 18 observations exceeding the threshold
-test.data_sev=test.data %>% filter(chargtot > 0 & chargtot < 81000)
-test.data %>% filter(chargtot > 0 & chargtot > 81000) # 3 observations exceeding the threshold
+train.data_sev <- train.data_freq %>% filter(chargtot > 0 & chargtot < 81000)
+train.data_freq %>% filter(chargtot > 0 & chargtot > 81000) # 18 observations exceeding the threshold
+test.data_sev <- test.data_freq %>% filter(chargtot > 0 & chargtot < 81000)
+test.data_freq %>% filter(chargtot > 0 & chargtot > 81000) # 3 observations exceeding the threshold
 train.data_sev$log_AvClAm = log(train.data_sev$chargtot/train.data_sev$nbrtotc)
 test.data_sev$log_AvClAm = log(test.data_sev$chargtot/test.data_sev$nbrtotc)
 
@@ -576,3 +576,4 @@ plot(n.trees, test_MSE_GB_sev, pch=19, col=KULbg, xlab="Number of Trees", ylab="
      main = "Perfomance of Boosting on Test Set")
 abline(h = min(test_MSE_GB_sev), col="red")
 legend("topright", c("Min. MSTE"), col="red", lty=1, lwd=1)
+
