@@ -1,0 +1,40 @@
+Comments:
+
+1 - LASSO
+
+# Now, we will use the LASSO regression for model selection: Prior to lasso, the most widely used method for choosing which covariates 
+# to include was stepwise selection, which only improves prediction accuracy in certain cases, such as when only a few covariates have 
+# a strong relationship with the outcome. However, in other cases, it can make prediction error worse. 
+# Also, at the time, ridge regression was the most popular technique for improving prediction accuracy. 
+# Ridge regression improves prediction error by shrinking large regression coefficients in order to reduce overfitting, 
+# but it does not perform covariate selection and therefore does not help to make the model more interpretable.
+# Lasso is able to achieve both of these goals by forcing the sum of the absolute value of the regression coefficients 
+# to be less than a fixed value, which forces certain coefficients to be set to zero, effectively choosing a simpler model that does 
+# not include those coefficients. This idea is similar to ridge regression, in which the sum of the squares of the coefficients is forced 
+# to be less than a fixed value, though in the case of ridge regression, this only shrinks the size of the coefficients, it does not set any 
+# of them to zero.
+
+Let's use the glmnet package (dropping commune, INS, codposs, expo, nbrtotan, chargtot) --> https://web.stanford.edu/~hastie/glmnet/glmnet_alpha.html 
+
+--> https://www.datacamp.com/community/tutorials/tutorial-ridge-lasso-elastic-net
+
+
+# the last plot say us the most relevant covariates for the dependent variable, if their path is above 0, they have a 
+# positive relation with nbrtotc and vice versa --> https://stats.stackexchange.com/questions/154825/what-to-conclude-from-this-lasso-plot-glmnet
+# the most important thing is the above axis: the dof are the variable that are not zero for a particular level of lambda, 
+# that is the coefficient which penalized the betas in our model
+
+#To end, we cannot take a summary table of our regression --> https://stackoverflow.com/questions/12937331/why-is-it-inadvisable-to-get-statistical-summary-information-for-regression-coef 
+# # It is worth mentioning that it is impossible to find the SE in LASSO prediction --> https://stats.stackexchange.com/questions/91462/standard-errors-for-lasso-prediction-using-r 
+
+# The fact that the variance is greater than the mean in our dependent variable confirm the assumption of overd.
+# We can actually try to reduce it by using mixed models as the Zero Inflated Model
+# but actually we can conclude that the GLM is not so efficient to fit the data, so we will use machine learning
+# techniques to improve the fit
+
+# Claim severity is highly skewed (to the right), so to model it we can use the Gamma distribution or the 
+# log-normal one. We will use the latter since (for the sake of reproducibility) the function glmnet doesn't 
+# support the gamma distribution
+
+
+
