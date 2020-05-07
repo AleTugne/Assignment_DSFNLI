@@ -9,6 +9,9 @@ library(classInt)
 library(gbm)
 library(plotmo)
 library(car)
+library(rpart)
+library(rpart.plot)
+library(pdp)
 # The previous packages have to be installed
 library(tidyverse)
 library(rgdal)
@@ -59,9 +62,9 @@ col_order <- c("codposs", "commune", "lat", "long", "ins", "ageph", "sexp", "age
 DB <- DB[, col_order]
 
 # Rearrange the levels for split, agecar and powerc
-DB$split <- factor(DB$split, ordered = TRUE, levels = c("Once", "Twice", "Thrice", "Monthly"))
-DB$agecar <- factor(DB$agecar, ordered = TRUE, levels = c("0-1", "2-5", "6-10", ">10"))
-DB$powerc <- factor(DB$powerc, ordered = TRUE, levels = c("<66", "66-110", ">110"))
+DB$split <- factor(DB$split, levels = c("Once", "Twice", "Thrice", "Monthly"))
+DB$agecar <- factor(DB$agecar, levels = c("0-1", "2-5", "6-10", ">10"))
+DB$powerc <- factor(DB$powerc, levels = c("<66", "66-110", ">110"))
 
 # First some univariate analysis --> See how the variables are distributed on the total number of observations
 # 1 - Barcharts / Histograms
@@ -196,38 +199,54 @@ variance_relfreq
 # From here (and from bar.nclaims) we can see that the number of 0 is > 75%, so we have to think about 
 # switching from a Poisson GLM to a Zero-Inflated Poisson GLM
 
+# Let's do some buckets for ageph
+set.seed(100)
+temp.cv <- rpart(nbrtotc ~ ageph, data=DB, control=rpart.control(minsplit=2, minbucket=1, cp=0, xval=5))
+plotcp(temp.cv)
+cpt <- as_tibble(temp.cv$cptable)
+print(cpt[1:20,], digits = 6)
+min_xerr <- min(cpt[,'xerror'])
+optimal_CP <- cpt %>% filter(xerror==min(xerror))
+temp <- rpart(nbrtotc ~ ageph, data=DB, control=rpart.control(minsplit=2, minbucket=1, cp=optimal_CP$CP))
+plot(temp)
+text(temp)
+summary(temp)
+
+# Divide ageph based on Rpart
+level <- c(0,20.5,25.5,29.5,31.5,35.5,49.5,57.5,100)
+
 # Let's define the training (80%) and test (20%) sets that will be used from now on
 set.seed(100)
 training.samples <- DB$nbrtotc %>% createDataPartition(p = 0.8, list = FALSE)
 train.data_freq  <- DB[training.samples, ]
 test.data_freq <- DB[-training.samples, ]
 
-test.data_freq$split <- factor(test.data_freq$split, ordered = TRUE, levels = c("Once", "Twice", "Thrice", "Monthly"))
-test.data_freq$agecar <- factor(test.data_freq$agecar, ordered = TRUE, levels = c("0-1", "2-5", "6-10", ">10"))
-test.data_freq$powerc <- factor(test.data_freq$powerc, ordered = TRUE, levels = c("<66", "66-110", ">110"))
+test.data_freq$split <- factor(test.data_freq$split, levels = c("Once", "Twice", "Thrice", "Monthly"))
+test.data_freq$agecar <- factor(test.data_freq$agecar, levels = c("0-1", "2-5", "6-10", ">10"))
+test.data_freq$powerc <- factor(test.data_freq$powerc, levels = c("<66", "66-110", ">110"))
 
-# Poisson GLM using LASSO regression from glmnet pack (without commune, INS, codeposs and chargtot)
-xmatrix <- model.matrix(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long,
+# Poisson GLM using LASSO regression from glmnet pack (without commune, INS, codeposs, expo, lnexpo, nbrtotan & chargtot)
+xmatrix <- model.matrix(nbrtotc ~ lat+long+cut(ageph,level)+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long,
                         data=train.data_freq)[,-1]
 
 # Let's use 10f CV to find the best value of lambda (the one which minimizes the TMSE)
 set.seed(100)
 lasso_GLM_freq_CV <- cv.glmnet(y=train.data_freq$nbrtotc, xmatrix, family='poisson', offset=train.data_freq$lnexpo,
-                               type.measure="mse", standardize=TRUE)
+                               type.measure="deviance", standardize=TRUE)
 # plot(lasso_GLM_freq_CV)
-# lasso_GLM_freq_CV$lambda.min  # the minimum value of lambda
+# lasso_GLM_freq_CV$lambda.1se  # the minimum value of lambda
 # coef(lasso_GLM_freq_CV, s = "lambda.min") # the corresponding coefficients
 
 lasso_GLM_freq <- glmnet(y=train.data_freq$nbrtotc, xmatrix, family='poisson', offset=train.data_freq$lnexpo, 
-                         type.measure="mse", standardize=TRUE, s=lasso_GLM_freq_CV$lambda.min)
+                         type.measure="deviance", standardize=TRUE, s=lasso_GLM_freq_CV$lambda.1se)
 
-coef(lasso_GLM_freq, s=lasso_GLM_freq_CV$lambda.min)
+coef(lasso_GLM_freq, s=lasso_GLM_freq_CV$lambda.1se)
 plot_glmnet(lasso_GLM_freq, label=5, xvar="norm")  # label the 5 biggest final coefs
  
-# Graphs representing the empirical distribution of the 5 most important variables in LASSO
+# Graphs representing the empirical distribution of some important variables in LASSO
 test.data_freq %>% summarize(emp_freq = sum(nbrtotc) / sum(expo)) 
 freq_by_ageph <- test.data_freq %>% group_by(ageph) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-freq_by_powerc <- test.data_freq %>% group_by(powerc) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_coverp <- test.data_freq %>% group_by(coverp) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
 freq_by_agecar <- test.data_freq %>% group_by(agecar) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
 freq_by_fuel <- test.data_freq %>% group_by(fuelc) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
 freq_by_split <- test.data_freq %>% group_by(split) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
@@ -240,8 +259,8 @@ ggplot.bar2 <- function(DT, variable, xlab){
 bar.freq.ageph <- ggplot.bar2(freq_by_ageph, freq_by_ageph$ageph, "ageph") +
                                 ggtitle("Empirical claim freq per age of P/h")
 
-bar.freq.powerc <- ggplot.bar2(freq_by_powerc, freq_by_powerc$powerc, "powerc") +
-                     ggtitle("Empirical claim freq per power of the car")
+bar.freq.coverp <- ggplot.bar2(freq_by_coverp, freq_by_coverp$coverp, "coverp") +
+                     ggtitle("Empirical claim freq per type of coverage")
 
 bar.freq.agecar <- ggplot.bar2(freq_by_agecar, freq_by_agecar$agecar, "agecar") +
                     ggtitle("Empirical claim freq per age of the car")
@@ -252,121 +271,44 @@ bar.freq.fuel <- ggplot.bar2(freq_by_fuel, freq_by_fuel$fuelc, "fuel") +
 bar.freq.split <- ggplot.bar2(freq_by_split, freq_by_split$split, "split") +
                     ggtitle("Empirical claim freq per payment split")
 
-g4 <- grid.arrange(bar.freq.ageph, bar.freq.powerc, bar.freq.agecar, bar.freq.fuel, bar.freq.split)
+g4 <- grid.arrange(bar.freq.ageph, bar.freq.coverp, bar.freq.agecar, bar.freq.fuel, bar.freq.split)
 g4
 
-# Predictions
-xnewmatrix <- model.matrix(~ nbrtotc+lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, 
-                            data=test.data_freq)[,-1]
+# Fit a GLM on the most important variables selected by LASSO
+GLM_freq <- glm(nbrtotc~cut(ageph,level)+agecar+fuelc+split+coverp, data=train.data_freq, family=poisson(link="log"), offset=lnexpo)
 
-lasso_GLM_freq_pred <- predict(lasso_GLM_freq, newx = xnewmatrix[,2:20], s=lasso_GLM_freq_CV$lambda.min, type='response', 
-                            newoffset=test.data_freq$lnexpo)
+#GLM results
+summary(GLM_freq)
+plot(GLM_freq)
+BIC(GLM_freq)
+anova(GLM_freq, test="Chisq")
 
-lasso_GLM_freq_pred <- as_tibble(lasso_GLM_freq_pred)
+# Let's predict the annual expected claim frequency for the test.data
+freq_prediction_GLM <- (predict(GLM_freq, test.data_freq, type='response'))*test.data_freq$expo
 
-test.data_freq_pred <- data.frame(test.data_freq,lasso_GLM_freq_pred$"1")
-test.data_freq_pred <- rename(test.data_freq_pred, lasso_GLM_freq_pred = lasso_GLM_freq_pred..1.)
+# Partial dependence plots of the variables in GLM_freq
+# ageph
+a <- min(test.data_freq$ageph):max(test.data_freq$ageph)
+freq_pred_ageph <- predict(GLM_freq, newdata = data.frame(ageph=a, expo=1, lnexpo=0, agecar=test.data_freq$agecar[1], coverp=test.data_freq$coverp[1], fuelc=test.data_freq$fuelc[1], split=test.data_freq$split[1]), type = "terms",se.fit = TRUE)
+b_pred_age <- freq_pred_ageph$fit
+l_pred_age <- freq_pred_ageph$fit - qnorm(0.975)*freq_pred_ageph$se.fit
+u_pred_age <- freq_pred_ageph$fit + qnorm(0.975)*freq_pred_ageph$se.fit
+df <- data.frame(a, b_pred_age, l_pred_age, u_pred_age)
+p_pred_age <- ggplot(df, aes(x = a))
+p_pred_age <- p_pred_age + geom_line(aes(a, b_pred_age[,1]), size = 1, col = KULbg)   
+p_pred_age <- p_pred_age + geom_line(aes(a, u_pred_age[,1]), size = 0.5, linetype = 2, col = KULbg) + geom_line(aes(a, l_pred_age[,1]), size = 0.5, linetype = 2, col = KULbg)
+p_pred_age <- p_pred_age + xlab("ageph") + ylab("fit") + theme_bw()
+p_pred_age
 
-# Let's predict the annual expected claim frequency for some profiles extracted from test.data
-freq_prediction_LASSO=(predict(lasso_GLM_freq, newx=xnewmatrix[23:25,2:20], s=lasso_GLM_freq_CV$lambda.min, 
-                               type='response', newoffset=test.data_freq$lnexpo))*test.data_freq$expo[23:25]
-
-# Graphs representing the Predicted distribution of the 5 most important variables in LASSO
-freq_by_ageph_LASSO <- test.data_freq_pred %>% group_by(ageph) %>% 
-                        summarize(pred.freq=sum(lasso_GLM_freq_pred)/sum(expo))
-bar.freq.ageph.pred <- ggplot(freq_by_ageph_LASSO, aes(x = ageph, y = pred.freq)) + theme_bw() + 
-                        geom_bar(stat="identity",color = KULbg, fill = KULbg, alpha = .5) + 
-                          ggtitle("Predicted claim freq per age of P/h")
-
-ggplot.box <- function(DT, variable, xlab){
-  ggplot(data = DT, aes(x=as.factor(variable), y=lasso_GLM_freq_pred)) + theme_bw() + 
-    geom_boxplot(outlier.colour=KULbg, outlier.shape=8, outlier.size=0.5) + labs(x = xlab, y = "Fitted Values")
-}
-
-bar.freq.powerc.pred <- ggplot.box(test.data_freq_pred, test.data_freq_pred$powerc, "powerc") +
-                          ggtitle("Predicted claim freq per power of the car")
-
-bar.freq.agecar.pred <- ggplot.box(test.data_freq_pred, test.data_freq_pred$agecar, "agecar") +
-                          ggtitle("Predicted claim freq per age of the car")
-
-bar.freq.fuelc.pred <- ggplot.box(test.data_freq_pred, test.data_freq_pred$fuelc, "fuelc") +
-                        ggtitle("Predicted claim freq per fuel of the car")
-
-bar.freq.split.pred <- ggplot.box(test.data_freq_pred, test.data_freq_pred$split, "split") +
-                        ggtitle("Predicted claim freq per payment split")
-
-g5 <- grid.arrange(bar.freq.ageph.pred, bar.freq.powerc.pred, bar.freq.agecar.pred, bar.freq.fuelc.pred,
-                    bar.freq.split.pred)
-g5
+partial(GLM_freq, pred.var = c("ageph"), plot = TRUE)
+partial(GLM_freq, pred.var = c("agecar"), plot = TRUE)
+partial(GLM_freq, pred.var = c("fuelc"), plot = TRUE)
+partial(GLM_freq, pred.var = c("split"), plot = TRUE)
+partial(GLM_freq, pred.var = c("coverp"), plot = TRUE)
 
 # Let's compute the Test MSE to compare GLM and GBM
-test_MSE_lasso_GLM_freq <- mean((test.data_freq_pred$nbrtotc - test.data_freq_pred$lasso_GLM_freq_pred) ^ 2) 
+test_MSE_GLM_freq <- mean((test.data_freq$nbrtotc - freq_prediction_GLM) ^ 2) 
 #actually Mean Squared Prediction Error
-
-# Check for over/underdispersion in the model
-mean(test.data_freq_pred$nbrtotc)
-var(test.data_freq_pred$nbrtotc)
-
-# Let's represent the GLM results by Spatial Data
-post_dt <- st_centroid(belgium_shape_sf)
-post_dt$long <- do.call(rbind, post_dt$geometry)[,1]
-post_dt$lat <- do.call(rbind, post_dt$geometry)[,2]
-post_dt$ageph <- test.data_freq$ageph[1]
-post_dt$agecar <- test.data_freq$agecar[1]
-post_dt$usec <- test.data_freq$usec[1]
-post_dt$sexp <- test.data_freq$sexp[1]
-post_dt$fuelc <- test.data_freq$fuelc[1]
-post_dt$split <- test.data_freq$split[1]
-post_dt$fleetc <- test.data_freq$fleetc[1]
-post_dt$sportc <- test.data_freq$sportc[1]
-post_dt$powerc <- test.data_freq$powerc[1]
-post_dt$coverp <- test.data_freq$coverp[1]
-
-post_dt <- as_tibble(post_dt)
-xnewmatrix3 <- model.matrix( ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, 
-                             data=post_dt)[,-1]
-
-pred <- predict(lasso_GLM_freq, newx=xnewmatrix3, type = "response", s=lasso_GLM_freq_CV$lambda.min, 
-                newoffset=test.data_freq$lnexpo)
-dt_pred <- tibble(pc = post_dt$POSTCODE, long = post_dt$long, lat = post_dt$lat, pred)
-names(dt_pred)[4] <- "fit_spatial" 
-
-dt_pred <- dplyr::arrange(dt_pred, post_dt$POSTCODE)
-
-post_freq <- dt_pred %>% group_by(pc) %>% summarize(num = n(), total_freq = sum(fit_spatial)) 
-post_freq %>% slice(1:5)
-
-belgium_shape_sf <- left_join(belgium_shape_sf, post_freq, by = c("POSTCODE" = "pc"))
-belgium_shape_sf$freq <- belgium_shape_sf$total_freq/belgium_shape_sf$Shape_Area
-
-belgium_shape_sf$freq_class <- cut(belgium_shape_sf$freq, breaks = quantile(belgium_shape_sf$freq, c(0,0.2,0.8,1), 
-                                  na.rm = TRUE), right = FALSE, include.lowest = TRUE, 
-                                    labels = c("low", "average", "high"))
-
-ggplot(belgium_shape_sf) + geom_sf(aes(fill = freq_class), colour = "black", size = 0.1) + 
-  ggtitle("Relative claim frequency") + labs(fill = "Frequency") + scale_fill_brewer(palette = "Blues", 
-   na.value = "white") + theme_bw()
-
-belgium_shape_sf <- st_simplify(belgium_shape_sf, dTolerance = 0.00001)
-tm_shape(belgium_shape_sf) + tm_borders(col = "black") + tm_fill(col = "freq_class", 
-    style = "cont", palette = "Blues", colorNA = "white") + tmap_leaflet(tmap_last())
-
-# Alternativa
-# num_bins <- 8
-# classint_fisher <- classIntervals(dt_pred$fit_spatial, num_bins, style = "fisher")
-# classint_fisher$brks
-# min(dt_pred$fit_spatial)
-# max(dt_pred$fit_spatial)
-
-# belgium_shape_sf <- left_join(belgium_shape_sf, dt_pred,  by = c("POSTCODE" = "pc"))
-# belgium_shape_sf$class_fisher <- cut(belgium_shape_sf$fit_spatial, breaks = classint_fisher$brks, right = FALSE, 
-#                                      include.lowest = TRUE, dig.lab = 3)
-
-# ggplot(belgium_shape_sf) + theme_bw() + labs(fill = "Fisher") +
-#   geom_sf(aes(fill = class_fisher), colour = NA) +
-#   ggtitle("DB claim frequency data") +
-#  scale_fill_brewer(palette = "Blues", na.value = "white") +
-#  theme_bw()
 
 #---------------------------- 3.2 Gradient Boosting ------------------------------
 
