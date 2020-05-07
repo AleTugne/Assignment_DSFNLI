@@ -279,7 +279,7 @@ GLM_freq <- glm(nbrtotc~cut(ageph,level)+agecar+fuelc+split+coverp, data=train.d
 
 #GLM results
 summary(GLM_freq)
-plot(GLM_freq)
+#plot(GLM_freq)
 BIC(GLM_freq)
 anova(GLM_freq, test="Chisq")
 
@@ -294,17 +294,19 @@ b_pred_age <- freq_pred_ageph$fit
 l_pred_age <- freq_pred_ageph$fit - qnorm(0.975)*freq_pred_ageph$se.fit
 u_pred_age <- freq_pred_ageph$fit + qnorm(0.975)*freq_pred_ageph$se.fit
 df <- data.frame(a, b_pred_age, l_pred_age, u_pred_age)
-p_pred_age <- ggplot(df, aes(x = a))
-p_pred_age <- p_pred_age + geom_line(aes(a, b_pred_age[,1]), size = 1, col = KULbg)   
-p_pred_age <- p_pred_age + geom_line(aes(a, u_pred_age[,1]), size = 0.5, linetype = 2, col = KULbg) + geom_line(aes(a, l_pred_age[,1]), size = 0.5, linetype = 2, col = KULbg)
-p_pred_age <- p_pred_age + xlab("ageph") + ylab("fit") + theme_bw()
-p_pred_age
+p_pred_age_freq <- ggplot(df, aes(x = a))
+p_pred_age_freq <- p_pred_age_freq + geom_line(aes(a, b_pred_age[,1]), size = 1, col = KULbg)   
+p_pred_age_freq <- p_pred_age_freq + geom_line(aes(a, u_pred_age[,1]), size = 0.5, linetype = 2, col = KULbg) + geom_line(aes(a, l_pred_age[,1]), size = 0.5, linetype = 2, col = KULbg)
+p_pred_age_freq <- p_pred_age_freq + xlab("ageph") + ylab("fit") + theme_bw()
 
+partial <- pdp::partial
 partial(GLM_freq, pred.var = c("ageph"), plot = TRUE)
-partial(GLM_freq, pred.var = c("agecar"), plot = TRUE)
-partial(GLM_freq, pred.var = c("fuelc"), plot = TRUE)
-partial(GLM_freq, pred.var = c("split"), plot = TRUE)
-partial(GLM_freq, pred.var = c("coverp"), plot = TRUE)
+p_pred_agecar_freq <- partial(GLM_freq, pred.var = c("agecar"), plot = TRUE)
+p_pred_fuelc_freq <- partial(GLM_freq, pred.var = c("fuelc"), plot = TRUE)
+p_pred_split_freq <- partial(GLM_freq, pred.var = c("split"), plot = TRUE)
+p_pred_coverp_freq <- partial(GLM_freq, pred.var = c("coverp"), plot = TRUE)
+
+g5 <- grid.arrange(p_pred_age_freq, p_pred_fuelc_freq, p_pred_split_freq, p_pred_coverp_freq)
 
 # Let's compute the Test MSE to compare GLM and GBM
 test_MSE_GLM_freq <- mean((test.data_freq$nbrtotc - freq_prediction_GLM) ^ 2) 
@@ -317,7 +319,7 @@ tgrid <- expand.grid('depth' = c(1,3,5), 'ntrees' = NA, 'oob_err' = NA)
 for(i in seq_len(nrow(tgrid))){
   set.seed(100) 
   # Fit a GBM
-  GB_freq <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long+offset(lnexpo),
+  GB_freq <- gbm(nbrtotc ~ lat+long+cut(ageph,level)+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long+offset(lnexpo),
            data = train.data_freq, distribution = 'poisson', var.monotone = NULL,
            n.trees = 200, interaction.depth = tgrid$depth[i], n.minobsinnode = 1000, shrinkage = 0.1,
            bag.fraction = 0.75, cv.folds = 0)
@@ -332,7 +334,7 @@ for(i in seq_len(nrow(tgrid))){
 tgrid %>% arrange(oob_err)
 
 # Fit the optimal GBM
-GB_freq <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long+offset(lnexpo),
+GB_freq <- gbm(nbrtotc ~ lat+long+cut(ageph,level)+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long+offset(lnexpo),
               data = train.data_freq, distribution = 'poisson', var.monotone = NULL,
               n.trees = tgrid$ntrees[1], interaction.depth = tgrid$depth[1], n.minobsinnode = 1000, shrinkage = 0.1,
               bag.fraction = 0.75, cv.folds = 0)
@@ -355,9 +357,9 @@ PDP_split
 PDP_fuel <- plot(GB_freq, i.var = 7, lwd = 1, col = KULbg, main = "", type="response")
 PDP_fuel
 
-# Let's predict the annual expected claim frequency for some profiles extracted from test.data
-freq_prediction_GB <- (predict(GB_freq, newdata = test.data_freq[23:25,], type = "response", 
-                        n.trees = 93))*test.data_freq$expo[23:25] 
+# Let's predict the annual expected claim frequency for the test.data
+freq_prediction_GB <- (predict(GB_freq, newdata = test.data_freq, type = "response", 
+                        n.trees = 93))
 
 # Compute the test error as a function of number of trees
 n.trees <- seq(from = 1, to = 93, by = 1) 
@@ -374,30 +376,6 @@ abline(h = min(test_MSE_GB_freq), col="red")
 legend("topright", c("Min. MSTE"), col="red", lty=1, lwd=1)
 
 # Let's represent the GBM results by Spatial Data
-pred2 <- predict(GB_freq, newdata=post_dt, type = "response", n.trees = 93)
-dt_pred2 <- tibble(pc = post_dt$POSTCODE, long = post_dt$long, lat = post_dt$lat, pred2)
-names(dt_pred2)[4] <- "fit_spatial2" 
-
-dt_pred2 <- dplyr::arrange(dt_pred2, post_dt$POSTCODE)
-
-post_freq2 <- dt_pred2 %>% group_by(pc) %>% summarize(num = n(), total_freq2 = sum(fit_spatial2)) 
-post_freq2 %>% slice(1:5)
-
-belgium_shape_sf <- left_join(belgium_shape_sf, post_freq2, by = c("POSTCODE" = "pc"))
-belgium_shape_sf$freq2 <- belgium_shape_sf$total_freq2/belgium_shape_sf$Shape_Area
-
-belgium_shape_sf$freq_class <- cut(belgium_shape_sf$freq2, breaks = quantile(belgium_shape_sf$freq2, c(0,0.2,0.8,1), 
-                                   na.rm = TRUE), right = FALSE, include.lowest = TRUE, 
-                                   labels = c("low", "average", "high"))
-
-ggplot(belgium_shape_sf) + geom_sf(aes(fill = freq_class), colour = "black", size = 0.1) +
-  ggtitle("DB claim frequency data") + labs(fill = "Relative\nfreq") + 
-  scale_fill_brewer(palette = "Blues", na.value = "white") +theme_bw()
-
-belgium_shape_sf <- st_simplify(belgium_shape_sf, dTolerance = 0.00001)
-tm_shape(belgium_shape_sf) + tm_borders(col = "black") + 
-  tm_fill(col = "freq_class", style = "cont", palette = "Blues", colorNA = "white")
-tmap_leaflet(tmap_last())
 
 #---------------------------- 4. Severity Modelling ------------------------------
 #---------------------------- 4.1 GLM ------------------------------
@@ -414,50 +392,41 @@ qqnorm(train.data_sev$log_AvClAm, col = KULbg)
 qqline(train.data_sev$log_AvClAm, col = "red")
 
 # let's start the LASSO
-xmatrix2 <- model.matrix(log_AvClAm ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, 
+xmatrix2 <- model.matrix(log_AvClAm ~ lat+long+cut(ageph,level)+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, 
                          data=train.data_sev)[,-1]
 
 set.seed(100)
 lasso_GLM_sev_CV <- cv.glmnet(y=train.data_sev$log_AvClAm, xmatrix2, family='gaussian', type.measure="mse", standardize=TRUE) #10F CV
 # plot(lasso_GLM_sev_CV)
-# lasso_GLM_sev_CV$lambda.min  # the minimum value of lambda
+# lasso_GLM_sev_CV$lambda.1se  # the minimum value of lambda
 # coef(lasso_GLM_sev_CV, s = "lambda.min") # the corresponding coefficients
 
 lasso_GLM_sev <- glmnet(y=train.data_sev$log_AvClAm, xmatrix2, family='gaussian', type.measure="mse", 
-                        standardize=TRUE, s=lasso_GLM_sev_CV$lambda.min)
-coef(lasso_GLM_sev, s=lasso_GLM_sev_CV$lambda.min)
+                        standardize=TRUE, s=lasso_GLM_sev_CV$lambda.1se)
+
+coef(lasso_GLM_sev, s=lasso_GLM_sev_CV$lambda.1se)
 plot_glmnet(lasso_GLM_sev, label=5, xvar="norm")  # label the 5 biggest final coefs
 
-# Predictions
-xnewmatrix2 <- model.matrix(~ log_AvClAm+lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long, 
-                             data=test.data_sev)[,-1]
+# Fit a GLM on the most important variables selected by LASSO
+GLM_sev <- glm(log_AvClAm~split+coverp, data=train.data_sev, family=gaussian)
 
-lasso_GLM_sev_pred <- predict(lasso_GLM_sev, newx=xnewmatrix2[,2:20], s=lasso_GLM_sev_CV$lambda.min, type='response')
-lasso_GLM_sev_pred <- as_tibble(lasso_GLM_sev_pred)
-test.data_sev_pred <- data.frame(test.data_sev,lasso_GLM_sev_pred$"1")
-test.data_sev_pred <- rename(test.data_sev_pred, lasso_GLM_sev_pred = lasso_GLM_sev_pred..1.)
+#GLM results
+summary(GLM_sev)
+#plot(GLM_freq)
+BIC(GLM_sev)
+anova(GLM_sev, test="Chisq")
 
-# Let's predict the annual expected claim frequency for some profiles extracted from test.data
-sev_prediction_LASSO <- predict(lasso_GLM_sev, newx = xnewmatrix2[23:25,2:20], 
-                                s = lasso_GLM_sev_CV$lambda.min, type='response')
+# Let's predict the annual expected claim severity for the test.data
+sev_prediction_GLM <- (predict(GLM_sev, test.data_sev, type='response'))
 
-# Graphs representing the predicted distribution of the 2 most important variables in LASSO
-ggplot.box2 <- function(DT, variable, xlab){
-  ggplot(data = DT, aes(x=as.factor(variable), y=lasso_GLM_sev_pred)) + theme_bw() + 
-    geom_boxplot(outlier.colour=KULbg, outlier.shape=8, outlier.size=0.5) + labs(x = xlab, y = "Fitted Values")
-}
+# Partial dependence plots of the variables in GLM_freq
+p_pred_split_sev <- partial(GLM_sev, pred.var = c("split"), plot = TRUE)
+p_pred_coverp_sev <- partial(GLM_sev, pred.var = c("coverp"), plot = TRUE)
 
-bar.sev.powerc.pred <- ggplot.box2(test.data_sev_pred, test.data_sev_pred$split, "split") +
-                        ggtitle("Predicted claim freq per payment split")
-
-bar.sev.coverp.pred <- ggplot.box2(test.data_sev_pred, test.data_sev_pred$coverp, "coverp") +
-                        ggtitle("Predicted claim freq per cover")
-
-g6 <- grid.arrange(bar.sev.powerc.pred, bar.sev.coverp.pred)
-g6
+g6 <- grid.arrange(p_pred_split_sev, p_pred_coverp_sev)
 
 # Let's compute the Test MSE to compare GLM and GBM
-test_MSE_lasso_GLM_sev <- mean((test.data_sev_pred$log_AvClAm - test.data_sev_pred$lasso_GLM_sev_pred) ^ 2)
+test_MSE_GLM_sev <- mean((test.data_sev$log_AvClAm - sev_prediction_GLM) ^ 2) 
 #actually Mean Squared Prediction Error
 
 #---------------------------- 4.2 Gradient Boosting ------------------------------
@@ -467,7 +436,7 @@ tgrid <- expand.grid('depth' = c(1,3,5), 'ntrees' = NA, 'oob_err' = NA)
 for(i in seq_len(nrow(tgrid))){
   set.seed(100) 
   # Fit a GBM
-  GB_sev <- gbm(log_AvClAm ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long,
+  GB_sev <- gbm(log_AvClAm ~ lat+long+cut(ageph,level)+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long,
                 data = train.data_sev, distribution = 'gaussian', var.monotone = NULL,
                 n.trees = 200, interaction.depth = tgrid$depth[i], n.minobsinnode = 1000, shrinkage = 0.1,
                 bag.fraction = 0.75, cv.folds = 0)
@@ -482,7 +451,7 @@ for(i in seq_len(nrow(tgrid))){
 tgrid %>% arrange(oob_err)
 
 # Fit the optimal GBM
-GB_sev <- gbm(log_AvClAm ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long,
+GB_sev <- gbm(log_AvClAm ~ lat+long+cut(ageph,level)+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long,
               data = train.data_sev, distribution = 'gaussian', var.monotone = NULL,
               n.trees = tgrid$ntrees[1], interaction.depth = tgrid$depth[1], n.minobsinnode = 1000, shrinkage = 0.1,
               bag.fraction = 0.75, cv.folds = 0)
@@ -502,11 +471,11 @@ PDP_split
 PDP_cover = plot(GB_sev, i.var = 12, lwd = 1, col = KULbg, main = "")
 PDP_cover
 
-# Let's predict the annual expected claim frequency for some profiles extracted from test.data
-sev_prediction_GB <- predict(GB_sev, newdata = test.data_sev[23:25,], type = "response", n.trees = 35) 
+# Let's predict the annual expected claim severity for the test.data
+sev_prediction_GB <- predict(GB_sev, newdata = test.data_sev, type = "response", n.trees = 34) 
 
 # Compute the test error as a function of number of trees
-n.trees <- seq(from = 1, to = 35, by = 1) 
+n.trees <- seq(from = 1, to = 34, by = 1) 
 predmatrix <- predict(GB_sev, test.data_sev, n.trees = n.trees, type = "response")
 
 # Calculating The Mean Squared Test Error
