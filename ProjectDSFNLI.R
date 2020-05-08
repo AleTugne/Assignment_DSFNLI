@@ -12,6 +12,8 @@ library(car)
 library(rpart)
 library(rpart.plot)
 library(pdp)
+library(maidrr)
+library(partykit)
 # The previous packages have to be installed
 library(tidyverse)
 library(rgdal)
@@ -176,7 +178,7 @@ belgium_shape_sf$freq_class <- cut(belgium_shape_sf$freq, breaks = quantile(belg
                                    labels = c("low", "average", "high"))
 ggplot(belgium_shape_sf) +
   geom_sf(aes(fill = freq_class), colour = "black", size = 0.1) +
-  ggtitle("Relative Exposure per Area") + labs(fill = "Frequency") +
+  ggtitle("Relative Frequency per Area") + labs(fill = "Frequency") +
   scale_fill_brewer(palette = "Blues", na.value = "white") + 
   theme_bw()
 
@@ -201,19 +203,19 @@ variance_relfreq
 
 # Let's do some buckets for ageph
 set.seed(100)
-temp.cv <- rpart(nbrtotc ~ ageph, data=DB, control=rpart.control(minsplit=2, minbucket=1, cp=0, xval=5))
+temp.cv <- rpart(cbind(expo,nbrtotc) ~ ageph, data=DB, method="poisson", parms=list(shrink=10), control=rpart.control(minsplit=2, minbucket=1, cp=0, xval=5))
 plotcp(temp.cv)
 cpt <- as_tibble(temp.cv$cptable)
 print(cpt[1:20,], digits = 6)
 min_xerr <- min(cpt[,'xerror'])
 optimal_CP <- cpt %>% filter(xerror==min(xerror))
-temp <- rpart(nbrtotc ~ ageph, data=DB, control=rpart.control(minsplit=2, minbucket=1, cp=optimal_CP$CP))
+temp <- rpart(cbind(expo,nbrtotc) ~ ageph, data=DB, parms=list(shrink=10), method="poisson", control=rpart.control(minsplit=2, minbucket=1, cp=optimal_CP$CP))
+temp 
+temp <- as.party(temp)
 plot(temp)
-text(temp)
-summary(temp)
 
 # Divide ageph based on Rpart
-level <- c(0,20.5,25.5,29.5,31.5,35.5,49.5,57.5,100)
+level <- c(0,23.5,26.5,29.5,31.5,37.5,46.5,57.5,77.5,100)
 
 # Let's define the training (80%) and test (20%) sets that will be used from now on
 set.seed(100)
@@ -235,7 +237,7 @@ lasso_GLM_freq_CV <- cv.glmnet(y=train.data_freq$nbrtotc, xmatrix, family='poiss
                                type.measure="deviance", standardize=TRUE)
 # plot(lasso_GLM_freq_CV)
 # lasso_GLM_freq_CV$lambda.1se  # the minimum value of lambda
-# coef(lasso_GLM_freq_CV, s = "lambda.min") # the corresponding coefficients
+# coef(lasso_GLM_freq_CV, s = "lambda.1se") # the corresponding coefficients
 
 lasso_GLM_freq <- glmnet(y=train.data_freq$nbrtotc, xmatrix, family='poisson', offset=train.data_freq$lnexpo, 
                          type.measure="deviance", standardize=TRUE, s=lasso_GLM_freq_CV$lambda.1se)
@@ -275,7 +277,7 @@ g4 <- grid.arrange(bar.freq.ageph, bar.freq.coverp, bar.freq.agecar, bar.freq.fu
 g4
 
 # Fit a GLM on the most important variables selected by LASSO
-GLM_freq <- glm(nbrtotc~cut(ageph,level)+agecar+fuelc+split+coverp, data=train.data_freq, family=poisson(link="log"), offset=lnexpo)
+GLM_freq <- glm(nbrtotc~cut(ageph,level)+agecar+fuelc+split+coverp+powerc, data=train.data_freq, family=poisson(link="log"), offset=lnexpo)
 
 #GLM results
 summary(GLM_freq)
@@ -284,12 +286,12 @@ BIC(GLM_freq)
 anova(GLM_freq, test="Chisq")
 
 # Let's predict the annual expected claim frequency for the test.data
-freq_prediction_GLM <- (predict(GLM_freq, test.data_freq, type='response'))*test.data_freq$expo
+freq_prediction_GLM <- (predict(GLM_freq, test.data_freq, type='response'))
 
 # Partial dependence plots of the variables in GLM_freq
 # ageph
 a <- min(test.data_freq$ageph):max(test.data_freq$ageph)
-freq_pred_ageph <- predict(GLM_freq, newdata = data.frame(ageph=a, expo=1, lnexpo=0, agecar=test.data_freq$agecar[1], coverp=test.data_freq$coverp[1], fuelc=test.data_freq$fuelc[1], split=test.data_freq$split[1]), type = "terms",se.fit = TRUE)
+freq_pred_ageph <- predict(GLM_freq, newdata = data.frame(ageph=a, expo=1, lnexpo=0, agecar=test.data_freq$agecar[1], coverp=test.data_freq$coverp[1], fuelc=test.data_freq$fuelc[1], split=test.data_freq$split[1], powerc=test.data_freq$powerc[1]), type = "terms",se.fit = TRUE)
 b_pred_age <- freq_pred_ageph$fit
 l_pred_age <- freq_pred_ageph$fit - qnorm(0.975)*freq_pred_ageph$se.fit
 u_pred_age <- freq_pred_ageph$fit + qnorm(0.975)*freq_pred_ageph$se.fit
@@ -305,8 +307,10 @@ p_pred_agecar_freq <- partial(GLM_freq, pred.var = c("agecar"), plot = TRUE)
 p_pred_fuelc_freq <- partial(GLM_freq, pred.var = c("fuelc"), plot = TRUE)
 p_pred_split_freq <- partial(GLM_freq, pred.var = c("split"), plot = TRUE)
 p_pred_coverp_freq <- partial(GLM_freq, pred.var = c("coverp"), plot = TRUE)
+p_pred_powerc_freq <- partial(GLM_freq, pred.var = c("powerc"), plot = TRUE)
 
-g5 <- grid.arrange(p_pred_age_freq, p_pred_fuelc_freq, p_pred_split_freq, p_pred_coverp_freq)
+g5 <- grid.arrange(p_pred_age_freq, p_pred_fuelc_freq, p_pred_split_freq, p_pred_coverp_freq, p_pred_powerc_freq)
+g5
 
 # Let's compute the Test MSE to compare GLM and GBM
 test_MSE_GLM_freq <- mean((test.data_freq$nbrtotc - freq_prediction_GLM) ^ 2) 
@@ -314,33 +318,18 @@ test_MSE_GLM_freq <- mean((test.data_freq$nbrtotc - freq_prediction_GLM) ^ 2)
 
 #---------------------------- 3.2 Gradient Boosting ------------------------------
 
-tgrid <- expand.grid('depth' = c(1,3,5), 'ntrees' = NA, 'oob_err' = NA)
+# Let's find the optimal number of trees by OOB
+GB_freq <- gbm(nbrtotc ~ lat+long+cut(ageph,level)+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long+offset(lnexpo),
+               data = train.data_freq, distribution = 'poisson', var.monotone = rep(0,13),
+               n.trees = 200, interaction.depth = 2, n.minobsinnode = 100, shrinkage = 0.1,
+               bag.fraction = 0.75, train.fraction = 1, cv.folds = 5, verbose=TRUE)
 
-for(i in seq_len(nrow(tgrid))){
-  set.seed(100) 
-  # Fit a GBM
-  GB_freq <- gbm(nbrtotc ~ lat+long+cut(ageph,level)+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long+offset(lnexpo),
-           data = train.data_freq, distribution = 'poisson', var.monotone = NULL,
-           n.trees = 200, interaction.depth = tgrid$depth[i], n.minobsinnode = 1000, shrinkage = 0.1,
-           bag.fraction = 0.75, cv.folds = 0)
-
-  # Retrieve the optimal number of trees
-  opt <- which.max(cumsum(GB_freq$oobag.improve))
-  tgrid$ntrees[i] <- opt
-  tgrid$oob_err[i] <- sum(GB_freq$oobag.improve[1:opt])
-}
-
-# Order results on the OOB error
-tgrid %>% arrange(oob_err)
+best.iter.oob <- gbm.perf(GB_freq, method = "OOB")
+print(best.iter.oob)
 
 # Fit the optimal GBM
-GB_freq <- gbm(nbrtotc ~ lat+long+cut(ageph,level)+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+lat*long+offset(lnexpo),
-              data = train.data_freq, distribution = 'poisson', var.monotone = NULL,
-              n.trees = tgrid$ntrees[1], interaction.depth = tgrid$depth[1], n.minobsinnode = 1000, shrinkage = 0.1,
-              bag.fraction = 0.75, cv.folds = 0)
-
-summary(GB_freq)
-print(GB_freq)
+summary(GB_freq, n.trees = best.iter.oob)
+print(GB_freq, n.trees = best.iter.oob)
 
 # Partial Dependence Plot (PDP) for ageph
 PDP_ageph <- plot(GB_freq, i.var = 3, lwd = 2, col = KULbg, main = "", type="response")
@@ -359,10 +348,10 @@ PDP_fuel
 
 # Let's predict the annual expected claim frequency for the test.data
 freq_prediction_GB <- (predict(GB_freq, newdata = test.data_freq, type = "response", 
-                        n.trees = 93))
+                        n.trees = best.iter.oob))
 
 # Compute the test error as a function of number of trees
-n.trees <- seq(from = 1, to = 93, by = 1) 
+n.trees <- seq(from = 1, to = best.iter.oob, by = 1) 
 predmatrix <- predict(GB_freq, test.data_freq, n.trees = n.trees, type = "response")
 
 # Calculating The Mean Squared Test Error
@@ -472,10 +461,10 @@ PDP_cover = plot(GB_sev, i.var = 12, lwd = 1, col = KULbg, main = "")
 PDP_cover
 
 # Let's predict the annual expected claim severity for the test.data
-sev_prediction_GB <- predict(GB_sev, newdata = test.data_sev, type = "response", n.trees = 34) 
+sev_prediction_GB <- predict(GB_sev, newdata = test.data_sev, type = "response", n.trees = tgrid$ntrees[1]) 
 
 # Compute the test error as a function of number of trees
-n.trees <- seq(from = 1, to = 34, by = 1) 
+n.trees <- seq(from = 1, to = tgrid$ntrees[1], by = 1) 
 predmatrix <- predict(GB_sev, test.data_sev, n.trees = n.trees, type = "response")
 
 # Calculating The Mean Squared Test Error
