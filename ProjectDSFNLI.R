@@ -85,12 +85,13 @@ hist.ageph <- ggplot.hist(DB, DB$ageph, "ageph", 1) + scale_x_continuous(breaks 
 bar.sex <- ggplot.bar(DB, DB$sexp, "sex") + xlab("P/h gender")
 bar.fuel <- ggplot.bar(DB, DB$fuelc, "fuel") + xlab("Type of fuel")
 bar.use <- ggplot.bar(DB, DB$usec, "use") + xlab("Type of use")
-bar.split <- ggplot.bar(DB, DB$split, "split") + xlab("Payment split")
+bar.power <- ggplot.bar(DB, DB$powerc, "power") + xlab("Power of car")
 bar.agecar <- ggplot.bar(DB, DB$agecar, "agec") + xlab("Car age")
-bar.fleet <- ggplot.bar(DB, DB$fleetc, "fleet") + xlab("Type of insurance")
 bar.sport <- ggplot.bar(DB, DB$sportc, "sport") + xlab("Sport car")
 bar.cover <- ggplot.bar(DB, DB$coverp, "cover") + xlab("Type of coverage")
-bar.power <- ggplot.bar(DB, DB$powerc, "power") + xlab("Power of car")
+bar.split <- ggplot.bar(DB, DB$split, "split") + xlab("Payment split")
+bar.fleet <- ggplot.bar(DB, DB$fleetc, "fleet") + xlab("Part of a Fleet")
+
 
 #Chargtot*ageph
 DB_chargtot <- DB %>% filter(chargtot > 0 & chargtot < 81000)
@@ -102,8 +103,7 @@ density.chargtot_ageph <- ggplot(DB_chargtot, aes(x=ageph)) + geom_density(adjus
 box.chargtot_powcar <- ggplot(DB_chargtot,aes(x = powerc, y = chargtot)) + geom_boxplot(col = KULbg, 
                         fill = KULbg, alpha = 0.5) + ylab("Claim severity")
 
-g1 <- grid.arrange(hist.ageph, bar.sex, bar.fuel, bar.use, bar.split, bar.agecar, bar.fleet, bar.sport, bar.cover,
-                   bar.power, density.chargtot_ageph, box.chargtot_powcar)
+g1 <- grid.arrange(hist.ageph, bar.sex, bar.fuel, bar.use, bar.power, bar.agecar, bar.sport, bar.fleet, bar.cover, bar.split)
 g1
 
 # 2 - Piecharts
