@@ -214,7 +214,7 @@ temp <- as.party(temp)
 plot(temp)
 
 # Divide ageph based on Rpart
-level <- c(0,23.5,26.5,29.5,31.5,37.5,46.5,57.5,77.5,100)
+level <- c(15,23.5,26.5,29.5,31.5,37.5,46.5,57.5,77.5,97)
 
 # Let's define the training (80%) and test (20%) sets that will be used from now on
 set.seed(100)
@@ -234,15 +234,15 @@ xmatrix <- model.matrix(nbrtotc ~ lat+long+cut(ageph,level)+agecar+usec+sexp+fue
 set.seed(100)
 lasso_GLM_freq_CV <- cv.glmnet(y=train.data_freq$nbrtotc, xmatrix, family='poisson', offset=train.data_freq$lnexpo,
                                type.measure="deviance", standardize=TRUE)
-# plot(lasso_GLM_freq_CV)
-# lasso_GLM_freq_CV$lambda.1se  # the minimum value of lambda
+ plot(lasso_GLM_freq_CV)
+# lasso_GLM_freq_CV$lambda.1se # the minimum value of lambda
 # coef(lasso_GLM_freq_CV, s = "lambda.1se") # the corresponding coefficients
 
 lasso_GLM_freq <- glmnet(y=train.data_freq$nbrtotc, xmatrix, family='poisson', offset=train.data_freq$lnexpo, 
                          type.measure="deviance", standardize=TRUE, s=lasso_GLM_freq_CV$lambda.1se)
 
 coef(lasso_GLM_freq, s=lasso_GLM_freq_CV$lambda.1se)
-plot_glmnet(lasso_GLM_freq, label=5, xvar="norm")  # label the 5 biggest final coefs
+plot_glmnet(lasso_GLM_freq, label=10, xvar="norm")  # label the 5 biggest final coefs
  
 # Graphs representing the empirical distribution of some important variables in LASSO
 test.data_freq %>% summarize(emp_freq = sum(nbrtotc) / sum(expo)) 
