@@ -158,6 +158,37 @@ hist.expo <- ggplot.hist(DB, DB$expo, "expo", 0.05) + xlab("Exposure to risk") +
 g3 <- grid.arrange(bar.nclaims, density.chargtot, hist.expo)
 g3
 
+# Graphs representing the empirical claim frequency of some important variables in LASSO
+test.data_freq %>% summarize(emp_freq = sum(nbrtotc) / sum(expo)) 
+freq_by_ageph <- test.data_freq %>% group_by(ageph,level) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_coverp <- test.data_freq %>% group_by(coverp) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_agecar <- test.data_freq %>% group_by(agecar) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_fuel <- test.data_freq %>% group_by(fuelc) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_split <- test.data_freq %>% group_by(split) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+
+ggplot.bar2 <- function(DT, variable, xlab){
+  ggplot(data = DT, aes(x=variable, y=emp_freq)) + theme_bw() + 
+    geom_bar(stat = "identity", col = KULbg, fill = KULbg, alpha = .5) + labs(x = xlab, y = "")
+}
+
+bar.freq.ageph <- ggplot.bar2(freq_by_ageph, freq_by_ageph$ageph,level, "ageph") +
+  ggtitle("Empirical claim freq per age of P/h")
+
+bar.freq.coverp <- ggplot.bar2(freq_by_coverp, freq_by_coverp$coverp, "coverp") +
+  ggtitle("Empirical claim freq per type of coverage")
+
+bar.freq.agecar <- ggplot.bar2(freq_by_agecar, freq_by_agecar$agecar, "agecar") +
+  ggtitle("Empirical claim freq per age of the car")
+
+bar.freq.fuel <- ggplot.bar2(freq_by_fuel, freq_by_fuel$fuelc, "fuel") +
+  ggtitle("Empirical claim freq per fuel")
+
+bar.freq.split <- ggplot.bar2(freq_by_split, freq_by_split$split, "split") +
+  ggtitle("Empirical claim freq per payment split")
+
+g4 <- grid.arrange(bar.freq.ageph, bar.freq.coverp, bar.freq.agecar, bar.freq.fuel, bar.freq.split)
+g4
+
 #---------------------------- 2. Spatial Data ------------------------------
 
 # We initialize the map of Belgium using SF for further analysis
@@ -244,37 +275,6 @@ lasso_GLM_freq <- glmnet(y=train.data_freq$nbrtotc, xmatrix, family='poisson', o
 coef(lasso_GLM_freq, s=lasso_GLM_freq_CV$lambda.1se)
 plot_glmnet(lasso_GLM_freq, label=10, xvar="norm")  # label the 5 biggest final coefs
  
-# Graphs representing the empirical distribution of some important variables in LASSO
-test.data_freq %>% summarize(emp_freq = sum(nbrtotc) / sum(expo)) 
-freq_by_ageph <- test.data_freq %>% group_by(ageph) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-freq_by_coverp <- test.data_freq %>% group_by(coverp) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-freq_by_agecar <- test.data_freq %>% group_by(agecar) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-freq_by_fuel <- test.data_freq %>% group_by(fuelc) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-freq_by_split <- test.data_freq %>% group_by(split) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-
-ggplot.bar2 <- function(DT, variable, xlab){
-  ggplot(data = DT, aes(x=variable, y=emp_freq)) + theme_bw() + 
-    geom_bar(stat = "identity", col = KULbg, fill = KULbg, alpha = .5) + labs(x = xlab, y = "")
-}
-
-bar.freq.ageph <- ggplot.bar2(freq_by_ageph, freq_by_ageph$ageph, "ageph") +
-                                ggtitle("Empirical claim freq per age of P/h")
-
-bar.freq.coverp <- ggplot.bar2(freq_by_coverp, freq_by_coverp$coverp, "coverp") +
-                     ggtitle("Empirical claim freq per type of coverage")
-
-bar.freq.agecar <- ggplot.bar2(freq_by_agecar, freq_by_agecar$agecar, "agecar") +
-                    ggtitle("Empirical claim freq per age of the car")
-
-bar.freq.fuel <- ggplot.bar2(freq_by_fuel, freq_by_fuel$fuelc, "fuel") +
-                  ggtitle("Empirical claim freq per fuel")
-
-bar.freq.split <- ggplot.bar2(freq_by_split, freq_by_split$split, "split") +
-                    ggtitle("Empirical claim freq per payment split")
-
-g4 <- grid.arrange(bar.freq.ageph, bar.freq.coverp, bar.freq.agecar, bar.freq.fuel, bar.freq.split)
-g4
-
 # Fit a GLM on the most important variables selected by LASSO
 GLM_freq <- glm(nbrtotc~cut(ageph,level)+agecar+fuelc+split+coverp+powerc, data=train.data_freq, family=poisson(link="log"), offset=lnexpo)
 
