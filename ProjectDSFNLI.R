@@ -158,6 +158,49 @@ hist.expo <- ggplot.hist(DB, DB$expo, "expo", 0.05) + xlab("Exposure to risk") +
 g3 <- grid.arrange(bar.nclaims, density.chargtot, hist.expo)
 g3
 
+# Plot empirical claim frequency by covariate
+freq_by_ageph <- DB %>% group_by(ageph) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_sexp <- DB %>% group_by(sexp) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_coverp <- DB %>% group_by(coverp) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_agecar <- DB %>% group_by(agecar) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_fuel <- DB %>% group_by(fuelc) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_split <- DB %>% group_by(split) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_sportc <- DB %>% group_by(sportc) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+freq_by_powerc <- DB %>% group_by(powerc) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
+
+ggplot.bar2 <- function(DT, variable){
+  ggplot(data = DT, aes(x=variable, y=emp_freq)) + theme_bw() + theme(axis.title = element_blank()) +
+    geom_bar(stat = "identity", col = KULbg, fill = KULbg, alpha = .5) 
+}
+
+bar.freq.ageph <- ggplot.bar2(freq_by_ageph, freq_by_ageph$ageph) +
+  ggtitle("Age of p/h")
+
+bar.freq.sexp <- ggplot.bar2(freq_by_sexp, freq_by_sexp$sexp) +
+  ggtitle("Sex of P/h")
+
+bar.freq.coverp <- ggplot.bar2(freq_by_coverp, freq_by_coverp$coverp) +
+  ggtitle("Type of coverage")
+
+bar.freq.agecar <- ggplot.bar2(freq_by_agecar, freq_by_agecar$agecar) +
+  ggtitle("Age of the car")
+
+bar.freq.fuel <- ggplot.bar2(freq_by_fuel, freq_by_fuel$fuelc) +
+  ggtitle("Fuel")
+
+bar.freq.split <- ggplot.bar2(freq_by_split, freq_by_split$split) +
+  ggtitle("Payment split")
+
+bar.freq.sportc <- ggplot.bar2(freq_by_sportc, freq_by_sportc$sportc) +
+  ggtitle("Sport car")
+
+bar.freq.powerc <- ggplot.bar2(freq_by_powerc, freq_by_powerc$powerc) +
+  ggtitle("Power of the car")
+
+
+g4 <- grid.arrange(bar.freq.ageph,bar.freq.sexp, bar.freq.coverp, bar.freq.agecar, bar.freq.fuel, bar.freq.split, bar.freq.sportc, bar.freq.powerc)
+g4
+
 #---------------------------- 2. Spatial Data ------------------------------
 
 # We initialize the map of Belgium using SF for further analysis
