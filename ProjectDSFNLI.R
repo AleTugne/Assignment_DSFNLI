@@ -318,7 +318,7 @@ test_MSE_GLM_freq <- mean((test.data_freq$nbrtotc - freq_prediction_GLM) ^ 2)
 #---------------------------- 3.2 Gradient Boosting ------------------------------
 
 # Let's find the optimal number of trees by OOB
-GB_freq <- gbm(nbrtotc ~ lat+long+cut(ageph,level)+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+offset(lnexpo),
+GB_freq <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+offset(lnexpo),
                data = train.data_freq, distribution = 'poisson', var.monotone = rep(0,12),
                n.trees = 200, interaction.depth = 1, n.minobsinnode = 100, shrinkage = 0.1,
                bag.fraction = 0.75, train.fraction = 1, cv.folds = 5, verbose=TRUE)
@@ -331,7 +331,7 @@ summary(GB_freq, n.trees = best.iter.oob_freq)
 print(GB_freq, n.trees = best.iter.oob_freq)
 
 # Partial Dependence Plot (PDP) for ageph
-PDP_ageph <- plot(GB_freq, i.var = 3, lwd = 2, col = KULbg, main = "", type="response")
+PDP_ageph <- plot(GB_freq, i.var = 3, lwd = 1, col = KULbg, main = "", type="response")
 PDP_ageph
 
 # Partial Dependence Plot (PDP) for split
@@ -439,7 +439,7 @@ GLM_sev <- glm(log_AvClAm~split+coverp, data=train.data_sev, family=gaussian)
 summary(GLM_sev)
 #plot(GLM_freq)
 BIC(GLM_sev)
-anova(GLM_sev, test="Chisq")
+anova(GLM_sev, test="F")
 
 # Let's predict the annual expected claim severity for the test.data
 sev_prediction_GLM <- (predict(GLM_sev, test.data_sev, type='response'))
