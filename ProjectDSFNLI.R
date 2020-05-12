@@ -158,37 +158,6 @@ hist.expo <- ggplot.hist(DB, DB$expo, "expo", 0.05) + xlab("Exposure to risk") +
 g3 <- grid.arrange(bar.nclaims, density.chargtot, hist.expo)
 g3
 
-<<<<<<< HEAD
-# Graphs representing the empirical claim frequency of some important variables in LASSO
-test.data_freq %>% summarize(emp_freq = sum(nbrtotc) / sum(expo)) 
-freq_by_ageph <- test.data_freq %>% group_by(ageph,level) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-freq_by_coverp <- test.data_freq %>% group_by(coverp) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-freq_by_agecar <- test.data_freq %>% group_by(agecar) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-freq_by_fuel <- test.data_freq %>% group_by(fuelc) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-freq_by_split <- test.data_freq %>% group_by(split) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
-
-ggplot.bar2 <- function(DT, variable, xlab){
-  ggplot(data = DT, aes(x=variable, y=emp_freq)) + theme_bw() + 
-    geom_bar(stat = "identity", col = KULbg, fill = KULbg, alpha = .5) + labs(x = xlab, y = "")
-}
-
-bar.freq.ageph <- ggplot.bar2(freq_by_ageph, freq_by_ageph$ageph,level, "ageph") +
-  ggtitle("Empirical claim freq per age of P/h")
-
-bar.freq.coverp <- ggplot.bar2(freq_by_coverp, freq_by_coverp$coverp, "coverp") +
-  ggtitle("Empirical claim freq per type of coverage")
-
-bar.freq.agecar <- ggplot.bar2(freq_by_agecar, freq_by_agecar$agecar, "agecar") +
-  ggtitle("Empirical claim freq per age of the car")
-
-bar.freq.fuel <- ggplot.bar2(freq_by_fuel, freq_by_fuel$fuelc, "fuel") +
-  ggtitle("Empirical claim freq per fuel")
-
-bar.freq.split <- ggplot.bar2(freq_by_split, freq_by_split$split, "split") +
-  ggtitle("Empirical claim freq per payment split")
-
-g4 <- grid.arrange(bar.freq.ageph, bar.freq.coverp, bar.freq.agecar, bar.freq.fuel, bar.freq.split)
-=======
 # Plot empirical claim frequency by covariate
 freq_by_ageph <- DB %>% group_by(ageph) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
 freq_by_sexp <- DB %>% group_by(sexp) %>% summarize(emp_freq = sum(nbrtotc) / sum(expo))
@@ -230,7 +199,6 @@ bar.freq.powerc <- ggplot.bar2(freq_by_powerc, freq_by_powerc$powerc) +
 
 
 g4 <- grid.arrange(bar.freq.ageph,bar.freq.sexp, bar.freq.coverp, bar.freq.agecar, bar.freq.fuel, bar.freq.split, bar.freq.sportc, bar.freq.powerc)
->>>>>>> 6cade7c1f9c3668ff83c062c105e759a0ca3ab49
 g4
 
 #---------------------------- 2. Spatial Data ------------------------------
@@ -328,13 +296,10 @@ summary(GLM_freq)
 BIC(GLM_freq)
 anova(GLM_freq, test="Chisq")
 
-# Let's predict the annual expected claim frequency for the test.data
-freq_prediction_GLM <- (predict(GLM_freq, test.data_freq, type='response'))
-
 # Partial dependence plots of the variables in GLM_freq
 # ageph
 a <- min(test.data_freq$ageph):max(test.data_freq$ageph)
-freq_pred_ageph <- predict(GLM_freq, newdata = data.frame(ageph=a, expo=1, lnexpo=0, agecar=test.data_freq$agecar[1], coverp=test.data_freq$coverp[1], fuelc=test.data_freq$fuelc[1], split=test.data_freq$split[1], powerc=test.data_freq$powerc[1]), type = "terms",se.fit = TRUE)
+freq_pred_ageph <- predict(GLM_freq, newdata = data.frame(ageph=a, expo=1, lnexpo=0, agecar=test.data_freq$agecar[1], coverp=test.data_freq$coverp[1], fuelc=test.data_freq$fuelc[1], split=test.data_freq$split[1], powerc=test.data_freq$powerc[1]), type = "terms", se.fit = TRUE)
 b_pred_age <- freq_pred_ageph$fit
 l_pred_age <- freq_pred_ageph$fit - qnorm(0.975)*freq_pred_ageph$se.fit
 u_pred_age <- freq_pred_ageph$fit + qnorm(0.975)*freq_pred_ageph$se.fit
@@ -346,14 +311,17 @@ p_pred_age_freq <- p_pred_age_freq + xlab("ageph") + ylab("fit") + theme_bw()
 
 partial <- pdp::partial
 partial(GLM_freq, pred.var = c("ageph"), plot = TRUE)
-p_pred_agecar_freq <- partial(GLM_freq, pred.var = c("agecar"), plot = TRUE, col = KULbg)
-p_pred_fuelc_freq <- partial(GLM_freq, pred.var = c("fuelc"), plot = TRUE, col = KULbg)
-p_pred_split_freq <- partial(GLM_freq, pred.var = c("split"), plot = TRUE, col = KULbg)
-p_pred_coverp_freq <- partial(GLM_freq, pred.var = c("coverp"), plot = TRUE, col = KULbg)
-p_pred_powerc_freq <- partial(GLM_freq, pred.var = c("powerc"), plot = TRUE, col = KULbg)
+p_pred_agecar_freq <- partial(GLM_freq, pred.var = c("agecar"), plot = TRUE, col = KULbg, inv.link = exp )
+p_pred_fuelc_freq <- partial(GLM_freq, pred.var = c("fuelc"), plot = TRUE, col = KULbg, inv.link = exp )
+p_pred_split_freq <- partial(GLM_freq, pred.var = c("split"), plot = TRUE, col = KULbg, inv.link = exp )
+p_pred_coverp_freq <- partial(GLM_freq, pred.var = c("coverp"), plot = TRUE, col = KULbg, inv.link = exp )
+p_pred_powerc_freq <- partial(GLM_freq, pred.var = c("powerc"), plot = TRUE, col = KULbg, inv.link = exp )
 
 g5 <- grid.arrange(p_pred_age_freq, p_pred_fuelc_freq, p_pred_split_freq, p_pred_coverp_freq, p_pred_powerc_freq)
 g5
+
+# Let's predict the annual expected claim frequency for the test.data
+freq_prediction_GLM <- (predict(GLM_freq, test.data_freq, type='response'))
 
 # Let's compute the Test MSE to compare GLM and GBM
 test_MSE_GLM_freq <- mean((test.data_freq$nbrtotc - freq_prediction_GLM) ^ 2) 
@@ -541,4 +509,5 @@ plot(n.trees, test_MSE_GB_sev, pch=19, col=KULbg, xlab="Number of Trees", ylab="
      main = "Perfomance of Boosting on Test Set")
 abline(h = min(test_MSE_GB_sev), col="red")
 legend("topright", c("Min. MSTE"), col="red", lty=1, lwd=1)
+
 
