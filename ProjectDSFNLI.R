@@ -424,31 +424,31 @@ train.data_sev <- train.data_freq %>% filter(chargtot > 0 & chargtot < 81000)
 train.data_freq %>% filter(chargtot > 0 & chargtot > 81000) # 18 observations exceeding the threshold
 test.data_sev <- test.data_freq %>% filter(chargtot > 0 & chargtot < 81000)
 test.data_freq %>% filter(chargtot > 0 & chargtot > 81000) # 3 observations exceeding the threshold
-train.data_sev$log_AvClAm = log(train.data_sev$chargtot/train.data_sev$nbrtotc)
-test.data_sev$log_AvClAm = log(test.data_sev$chargtot/test.data_sev$nbrtotc)
+train.data_sev$AvClAm = train.data_sev$chargtot/train.data_sev$nbrtotc
+test.data_sev$AvClAm = test.data_sev$chargtot/test.data_sev$nbrtotc
 
 # AvClAm is lognormally distributed
-qqnorm(train.data_sev$log_AvClAm, col = KULbg)
-qqline(train.data_sev$log_AvClAm, col = "red")
+qqnorm(log(train.data_sev$AvClAm), col = KULbg)
+qqline(log(train.data_sev$AvClAm), col = "red")
 
 # let's start the LASSO
-xmatrix2 <- model.matrix(log_AvClAm ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp, 
+xmatrix2 <- model.matrix(log(AvClAm) ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp, 
                          data=train.data_sev)[,-1]
 
 set.seed(100)
-lasso_GLM_sev_CV <- cv.glmnet(y=train.data_sev$log_AvClAm, xmatrix2, family='gaussian', type.measure="mse", standardize=TRUE) #10F CV
+lasso_GLM_sev_CV <- cv.glmnet(y=log(train.data_sev$AvClAm), xmatrix2, family='gaussian', type.measure="deviance", standardize=TRUE) #10F CV
 # plot(lasso_GLM_sev_CV)
 # lasso_GLM_sev_CV$lambda.1se  # the minimum value of lambda
-# coef(lasso_GLM_sev_CV, s = "lambda.min") # the corresponding coefficients
+# coef(lasso_GLM_sev_CV, s = "lambda.1se") # the corresponding coefficients
 
-lasso_GLM_sev <- glmnet(y=train.data_sev$log_AvClAm, xmatrix2, family='gaussian', type.measure="mse", 
+lasso_GLM_sev <- glmnet(y=log(train.data_sev$AvClAm), xmatrix2, family='gaussian', type.measure="deviance", 
                         standardize=TRUE, s=lasso_GLM_sev_CV$lambda.1se)
 
 coef(lasso_GLM_sev, s=lasso_GLM_sev_CV$lambda.1se)
 plot_glmnet(lasso_GLM_sev, label=5, xvar="norm")  # label the 5 biggest final coefs
 
 # Fit a GLM on the most important variables selected by LASSO
-GLM_sev <- glm(log_AvClAm~split+coverp, data=train.data_sev, family=gaussian)
+GLM_sev <- glm(log(AvClAm)~split+coverp, data=train.data_sev, family=gaussian)
 
 #GLM results
 summary(GLM_sev)
