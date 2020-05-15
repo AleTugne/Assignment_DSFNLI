@@ -369,15 +369,15 @@ print(GB_freq, n.trees = 622)
 
 
 # Partial Dependence Plot (PDP) for ageph
-PDP_ageph <- plot(GB_freq, i.var = 3, lwd = 1, col = KULbg, main = "", type="response")
+PDP_ageph <- plot(GB_freq, i.var = 3, col = KULbg, main = "", type="response")
 PDP_ageph
 
 # Partial Dependence Plot (PDP) for split
-PDP_split <- plot(GB_freq, i.var = 8, lwd = 1, col = KULbg, main = "", type="response")
+PDP_split <- plot(GB_freq, i.var = 8, col = KULbg, main = "", type="response")
 PDP_split
 
 # Partial Dependence Plot (PDP) for fuel
-PDP_fuel <- plot(GB_freq, i.var = 7, lwd = 1, col = KULbg, main = "", type="response")
+PDP_fuel <- plot(GB_freq, i.var = 7, col = KULbg, main = "", type="response")
 PDP_fuel
 
 # Let's predict the annual expected claim frequency for the test.data
@@ -389,7 +389,7 @@ n.trees <- seq(from = 1, to = 622, by = 1)
 predmatrix <- predict(GB_freq, test.data_freq, n.trees = n.trees, type = "response")
 
 # Calculating The Mean Squared Test Error
-test_MSE_GB_freq <- with(test.data_freq, apply((predmatrix-nbrtotc)^2, 2, mean))
+test_MSE_GB_freq <- with(test.data_freq, apply((nbrtotc-predmatrix)^2, 2, mean))
 Min_test_MSE_GB_freq <- min(test_MSE_GB_freq)
 
 # Plotting the test error vs number of trees
