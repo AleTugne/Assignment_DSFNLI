@@ -266,14 +266,16 @@ level <- c(15,23.5,26.5,29.5,31.5,37.5,46.5,57.5,77.5,97)
 set.seed(100)
 training.samples <- DB$nbrtotc %>% createDataPartition(p = 0.8, list = FALSE)
 train.data_freq  <- DB[training.samples, ]
+train.data_freq$ageph <- cut(train.data_freq$ageph, level)
 test.data_freq <- DB[-training.samples, ]
+test.data_freq$ageph <- cut(test.data_freq$ageph, level)
 
 test.data_freq$split <- factor(test.data_freq$split, levels = c("Once", "Twice", "Thrice", "Monthly"))
 test.data_freq$agecar <- factor(test.data_freq$agecar, levels = c("0-1", "2-5", "6-10", ">10"))
 test.data_freq$powerc <- factor(test.data_freq$powerc, levels = c("<66", "66-110", ">110"))
 
 # Poisson GLM using LASSO regression from glmnet pack (without commune, INS, codeposs, expo, lnexpo, nbrtotan & chargtot)
-xmatrix <- model.matrix(nbrtotc ~ lat+long+cut(ageph,level)+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp,
+xmatrix <- model.matrix(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp,
                         data=train.data_freq)[,-1]
 
 # Let's use 10f CV to find the best value of lambda (the one which minimizes the TMSE)
@@ -291,7 +293,7 @@ coef(lasso_GLM_freq, s=lasso_GLM_freq_CV$lambda.1se)
 plot_glmnet(lasso_GLM_freq, label=10, xvar="norm")  # label the 5 biggest final coefs
  
 # Fit a GLM on the most important variables selected by LASSO
-GLM_freq <- glm(nbrtotc~cut(ageph,level)+agecar+fuelc+split+coverp+powerc, data=train.data_freq, family=poisson(link="log"), offset=lnexpo)
+GLM_freq <- glm(nbrtotc~ageph+agecar+fuelc+split+coverp+powerc, data=train.data_freq, family=poisson(link="log"), offset=lnexpo)
 
 #GLM results
 summary(GLM_freq)
@@ -301,8 +303,9 @@ anova(GLM_freq, test="Chisq")
 
 # Partial dependence plots of the variables in GLM_freq
 # ageph
-a <- min(test.data_freq$ageph):max(test.data_freq$ageph)
-freq_pred_ageph <- predict(GLM_freq, newdata = data.frame(ageph=a, expo=1, lnexpo=0, agecar=test.data_freq$agecar[1], coverp=test.data_freq$coverp[1], fuelc=test.data_freq$fuelc[1], split=test.data_freq$split[1], powerc=test.data_freq$powerc[1]), type = "terms", se.fit = TRUE)
+
+a <- min(DB$ageph):max(DB$ageph)
+freq_pred_ageph <- predict(GLM_freq, newdata = data.frame(ageph=cut(a,level), expo=1, lnexpo=0, agecar=test.data_freq$agecar[1], coverp=test.data_freq$coverp[1], fuelc=test.data_freq$fuelc[1], split=test.data_freq$split[1], powerc=test.data_freq$powerc[1]), type = "terms", se.fit = TRUE)
 b_pred_age <- freq_pred_ageph$fit
 l_pred_age <- freq_pred_ageph$fit - qnorm(0.975)*freq_pred_ageph$se.fit
 u_pred_age <- freq_pred_ageph$fit + qnorm(0.975)*freq_pred_ageph$se.fit
@@ -313,7 +316,7 @@ p_pred_age_freq <- p_pred_age_freq + geom_line(aes(a, u_pred_age[,1]), size = 0.
 p_pred_age_freq <- p_pred_age_freq + xlab("ageph") + ylab("fit") + theme_bw()
 
 partial <- pdp::partial
-partial(GLM_freq, pred.var = c("ageph"), plot = TRUE)
+partial(GLM_freq, pred.var = c("ageph"), plot = TRUE, inv.link = exp)
 p_pred_agecar_freq <- partial(GLM_freq, pred.var = c("agecar"), plot = TRUE, col = KULbg, inv.link = exp )
 p_pred_fuelc_freq <- partial(GLM_freq, pred.var = c("fuelc"), plot = TRUE, col = KULbg, inv.link = exp )
 p_pred_split_freq <- partial(GLM_freq, pred.var = c("split"), plot = TRUE, col = KULbg, inv.link = exp )
@@ -333,17 +336,18 @@ test_MSE_GLM_freq <- mean((test.data_freq$nbrtotc - freq_prediction_GLM) ^ 2)
 #---------------------------- 3.2 Gradient Boosting ------------------------------
 
 # Let's find the optimal number of trees by OOB
+set.seed(100)
 GB_freq <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+offset(lnexpo),
                data = train.data_freq, distribution = 'poisson', var.monotone = rep(0,12),
-               n.trees = 200, interaction.depth = 1, n.minobsinnode = 100, shrinkage = 0.1,
-               bag.fraction = 0.75, train.fraction = 1, cv.folds = 5, verbose=TRUE)
+               n.trees = 500, interaction.depth = 1, n.minobsinnode = 1000, shrinkage = 0.05,
+               bag.fraction = 0.5, train.fraction = 0.5, cv.folds = 5)
 
-best.iter.oob_freq <- gbm.perf(GB_freq, method = "OOB")
-print(best.iter.oob_freq)
+best.iter.cv_freq <- gbm.perf(GB_freq, method = "cv")
+print(best.iter.cv_freq)
 
 # Fit the optimal GBM
-summary(GB_freq, n.trees = best.iter.oob_freq)
-print(GB_freq, n.trees = best.iter.oob_freq)
+summary(GB_freq, n.trees = best.iter.cv_freq)
+print(GB_freq, n.trees = best.iter.cv_freq)
 
 # Partial Dependence Plot (PDP) for ageph
 PDP_ageph <- plot(GB_freq, i.var = 3, lwd = 1, col = KULbg, main = "", type="response")
@@ -359,10 +363,10 @@ PDP_fuel
 
 # Let's predict the annual expected claim frequency for the test.data
 freq_prediction_GB <- (predict(GB_freq, newdata = test.data_freq, type = "response", 
-                        n.trees = best.iter.oob_freq))
+                        n.trees = best.iter.cv_freq))
 
 # Compute the test error as a function of number of trees
-n.trees <- seq(from = 1, to = best.iter.oob_freq, by = 1) 
+n.trees <- seq(from = 1, to = best.iter.cv_freq, by = 1) 
 predmatrix <- predict(GB_freq, test.data_freq, n.trees = n.trees, type = "response")
 
 # Calculating The Mean Squared Test Error
@@ -384,12 +388,12 @@ post_dt$lat <- do.call(rbind, post_dt$geometry)[,2]
 # gbm with only spatial effects considered and derived optimal parameters
 GB_freq_1 <- gbm(nbrtotc ~ lat+long+offset(lnexpo),
                  data = train.data_freq, distribution = 'poisson', var.monotone = rep(0,2),
-                 n.trees = 200, interaction.depth = 2, n.minobsinnode = 100, shrinkage = 0.1,
-                 bag.fraction = 0.75, train.fraction = 1, cv.folds = 5, verbose=TRUE)
+                 n.trees = 500, interaction.depth = 1, n.minobsinnode = 1000, shrinkage = 0.05,
+                 bag.fraction = 0.5, train.fraction = 0.5, cv.folds = 5)
 
-best.iter.oob_1 <- gbm.perf(GB_freq_1, method = "OOB")
+best.iter.cv_1 <- gbm.perf(GB_freq_1, method = "cv")
 
-pred <- predict(GB_freq_1, newdata = post_dt, n.trees = best.iter.oob_1, type = "response", ir.var = c(1,2))
+pred <- predict(GB_freq_1, newdata = post_dt, n.trees = best.iter.cv_1, type = "response", ir.var = c(1,2))
 
 dt_pred <- data.frame(pc = post_dt$POSTCODE,
                       long = post_dt$long,
@@ -400,25 +404,19 @@ belgium_shape_sf <- left_join(belgium_shape_sf,
                               dt_pred,
                               by = c("POSTCODE" =
                                        "pc"))
-#version 1
 ggplot(belgium_shape_sf) +
-  geom_sf(aes(fill = fit_spatial), colour = NA) +
+  geom_sf(aes(fill = dt_pred$fit_spatial), colour = NA) +
   ggtitle("Gradient Boosting machine - frequency") +
   scale_fill_gradient(low = "#99CCFF",
                       high = "#003366") +
   theme_bw()
 
-#version 2 
-tm_shape(belgium_shape_sf) +
-  tm_borders(col = 'white', lwd = .1) +
-  tm_fill("fit_spatial", style = "cont",
-          palette = "RdBu", legend.reverse = TRUE,
-          auto.palette.mapping = TRUE) +
-  tm_layout(legend.title.size = 1.0,
-            legend.text.size = 1.0)
-
 #---------------------------- 4. Severity Modelling ------------------------------
 #---------------------------- 4.1 GLM ------------------------------
+set.seed(100)
+training.samples <- DB$nbrtotc %>% createDataPartition(p = 0.8, list = FALSE)
+train.data_freq  <- DB[training.samples, ]
+test.data_freq <- DB[-training.samples, ]
 
 train.data_sev <- train.data_freq %>% filter(chargtot > 0 & chargtot < 81000)
 train.data_freq %>% filter(chargtot > 0 & chargtot > 81000) # 18 observations exceeding the threshold
@@ -437,9 +435,9 @@ xmatrix2 <- model.matrix(log(AvClAm) ~ lat+long+ageph+agecar+usec+sexp+fuelc+spl
 
 set.seed(100)
 lasso_GLM_sev_CV <- cv.glmnet(y=log(train.data_sev$AvClAm), xmatrix2, family='gaussian', type.measure="deviance", standardize=TRUE) #10F CV
-# plot(lasso_GLM_sev_CV)
-# lasso_GLM_sev_CV$lambda.1se  # the minimum value of lambda
-# coef(lasso_GLM_sev_CV, s = "lambda.1se") # the corresponding coefficients
+plot(lasso_GLM_sev_CV)
+ lasso_GLM_sev_CV$lambda.1se  # the minimum value of lambda
+ coef(lasso_GLM_sev_CV, s = "lambda.1se") # the corresponding coefficients
 
 lasso_GLM_sev <- glmnet(y=log(train.data_sev$AvClAm), xmatrix2, family='gaussian', type.measure="deviance", 
                         standardize=TRUE, s=lasso_GLM_sev_CV$lambda.1se)
@@ -457,7 +455,7 @@ BIC(GLM_sev)
 anova(GLM_sev, test="F")
 
 # Let's predict the annual expected claim severity for the test.data
-sev_prediction_GLM <- (predict(GLM_sev, test.data_sev, type='response'))
+sev_prediction_GLM <- exp((predict(GLM_sev, test.data_sev, type='response')))
 
 # Partial dependence plots of the variables in GLM_freq
 p_pred_split_sev <- partial(GLM_sev, pred.var = c("split"), plot = TRUE)
@@ -466,23 +464,23 @@ p_pred_coverp_sev <- partial(GLM_sev, pred.var = c("coverp"), plot = TRUE)
 g6 <- grid.arrange(p_pred_split_sev, p_pred_coverp_sev)
 
 # Let's compute the Test MSE to compare GLM and GBM
-test_MSE_GLM_sev <- mean((test.data_sev$log_AvClAm - sev_prediction_GLM) ^ 2) 
+test_MSE_GLM_sev <- mean((log(test.data_sev$AvClAm) - log(sev_prediction_GLM)) ^ 2) 
 #actually Mean Squared Prediction Error
 
 #---------------------------- 4.2 Gradient Boosting ------------------------------
 
 # Let's find the optimal number of trees by OOB
-GB_sev <- gbm(log_AvClAm ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp,
+GB_sev <- gbm(log(AvClAm) ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp,
                data = train.data_sev, distribution = 'gaussian', var.monotone = rep(0,12),
-               n.trees = 200, interaction.depth = 1, n.minobsinnode = 100, shrinkage = 0.1,
-               bag.fraction = 0.75, train.fraction = 1, cv.folds = 5, verbose=TRUE)
+               n.trees = 500, interaction.depth = 1, n.minobsinnode = 100, shrinkage = 0.1,
+               bag.fraction = 0.5, train.fraction = 0.5, cv.folds = 5)
 
-best.iter.oob_sev <- gbm.perf(GB_sev, method = "OOB")
-print(best.iter.oob_sev)
+best.iter.cv_sev <- gbm.perf(GB_sev, method = "cv")
+print(best.iter.cv_sev)
 
 # Fit the optimal GBM
-summary(GB_sev, n.trees = best.iter.oob_sev)
-print(GB_sev, n.trees = best.iter.oob_sev)
+summary(GB_sev, n.trees = best.iter.cv_sev)
+print(GB_sev, n.trees = best.iter.cv_sev)
 
 # Partial Dependence Plot (PDP) for ageph
 PDP_ageph <- plot(GB_sev, i.var = 3, lwd = 2, col = KULbg, main = "")
@@ -497,14 +495,14 @@ PDP_cover = plot(GB_sev, i.var = 12, lwd = 1, col = KULbg, main = "")
 PDP_cover
 
 # Let's predict the annual expected claim severity for the test.data
-sev_prediction_GB <- predict(GB_sev, newdata = test.data_sev, type = "response", n.trees = best.iter.oob_sev) 
+sev_prediction_GB <- predict(GB_sev, newdata = test.data_sev, type = "response", n.trees = best.iter.cv_sev) 
 
 # Compute the test error as a function of number of trees
-n.trees <- seq(from = 1, to = best.iter.oob_sev, by = 1) 
+n.trees <- seq(from = 1, to = best.iter.cv_sev, by = 1) 
 predmatrix <- predict(GB_sev, test.data_sev, n.trees = n.trees, type = "response")
 
 # Calculating The Mean Squared Test Error
-test_MSE_GB_sev <- with(test.data_sev, apply((predmatrix-log_AvClAm)^2, 2, mean))
+test_MSE_GB_sev <- with(test.data_sev, apply((predmatrix-log(AvClAm))^2, 2, mean))
 Min_test_MSE_GB_sev <- min(test_MSE_GB_sev)
 
 # Plotting the test error vs number of trees
