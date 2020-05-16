@@ -448,9 +448,9 @@ xmatrix2 <- model.matrix(log(AvClAm) ~ lat+long+ageph+agecar+usec+sexp+fuelc+spl
 
 set.seed(100)
 lasso_GLM_sev_CV <- cv.glmnet(y=log(train.data_sev$AvClAm), xmatrix2, family='gaussian', type.measure="deviance", standardize=TRUE) #10F CV
-plot(lasso_GLM_sev_CV)
- lasso_GLM_sev_CV$lambda.1se  # the minimum value of lambda
- coef(lasso_GLM_sev_CV, s = "lambda.1se") # the corresponding coefficients
+#plot(lasso_GLM_sev_CV)
+#lasso_GLM_sev_CV$lambda.1se  # the minimum value of lambda
+#coef(lasso_GLM_sev_CV, s = "lambda.1se") # the corresponding coefficients
 
 lasso_GLM_sev <- glmnet(y=log(train.data_sev$AvClAm), xmatrix2, family='gaussian', type.measure="deviance", 
                         standardize=TRUE, s=lasso_GLM_sev_CV$lambda.1se)
@@ -471,8 +471,8 @@ anova(GLM_sev, test="F")
 sev_prediction_GLM <- exp((predict(GLM_sev, test.data_sev, type='response')))
 
 # Partial dependence plots of the variables in GLM_freq
-p_pred_split_sev <- partial(GLM_sev, pred.var = c("split"), plot = TRUE)
-p_pred_coverp_sev <- partial(GLM_sev, pred.var = c("coverp"), plot = TRUE)
+p_pred_split_sev <- partial(GLM_sev, pred.var = c("split"), plot = TRUE, inv.link = exp)
+p_pred_coverp_sev <- partial(GLM_sev, pred.var = c("coverp"), plot = TRUE, inv.link = exp)
 
 g6 <- grid.arrange(p_pred_split_sev, p_pred_coverp_sev)
 
