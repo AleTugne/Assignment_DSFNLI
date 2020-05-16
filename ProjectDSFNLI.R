@@ -1,3 +1,10 @@
+##################################################
+## Project: Data Science for Non-Life Insurance
+## Script purpose: Non-Life Insurance Tariff with GLM and GB
+## Date: 18/05/2020
+## Authors: Ismaele Caramello (0815530), Marco Franzoia (0779104), Claudio Olivelli (0787524), Alessandro Tugnetti (0786213)
+##################################################
+
 # --------------------------- 0. Setup --------------------------------------
 
 # Importing libraries
@@ -303,7 +310,6 @@ anova(GLM_freq, test="Chisq")
 
 # Partial dependence plots of the variables in GLM_freq
 # ageph
-
 a <- min(DB$ageph):max(DB$ageph)
 freq_pred_ageph <- predict(GLM_freq, newdata = data.frame(ageph=cut(a,level), expo=1, lnexpo=0, agecar=test.data_freq$agecar[1], coverp=test.data_freq$coverp[1], fuelc=test.data_freq$fuelc[1], split=test.data_freq$split[1], powerc=test.data_freq$powerc[1]), type = "terms", se.fit = TRUE)
 b_pred_age <- freq_pred_ageph$fit
@@ -335,21 +341,16 @@ test_MSE_GLM_freq <- mean((test.data_freq$nbrtotc - freq_prediction_GLM) ^ 2)
 
 #---------------------------- 3.2 Gradient Boosting ------------------------------
 
-# Let's tune the parameters
+## Let's tune the parameters
 #hyper_grid <- expand.grid(shrinkage = c(.01, .05 , .1), n.minobsinnode = c(10, 50, 100), bag.fraction = c(.65, .8, 1), 
 #                            optimal_trees = 0, min_cvMSE = 0)
 
-#random_index <- sample(1:nrow(train.data_freq), nrow(train.data_freq))
-#random_train <- train.data_freq[random_index, ]
-
 #for(i in 1:nrow(hyper_grid)) {
-  
-  # reproducibility
 #  set.seed(100)
 #  GB_freq <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+offset(lnexpo),
 #                data = train.data_freq, distribution = 'poisson', var.monotone = rep(0,12),
 #                n.trees = 1000, interaction.depth = 1, n.minobsinnode = hyper_grid$n.minobsinnode[i], shrinkage = hyper_grid$shrinkage[i],
-#                bag.fraction = hyper_grid$bag.fraction[i], train.fraction = 0.5, cv.folds = 5, n.cores = NULL)
+#                bag.fraction = hyper_grid$bag.fraction[i], cv.folds = 5, n.cores = NULL)
   
 #  hyper_grid$optimal_trees[i] <- which.min(GB_freq$cv.error)
 #  hyper_grid$min_cvMSE[i] <- (min(GB_freq$cv.error))
@@ -361,12 +362,11 @@ test_MSE_GLM_freq <- mean((test.data_freq$nbrtotc - freq_prediction_GLM) ^ 2)
 set.seed(100)
 GB_freq <- gbm(nbrtotc ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp+offset(lnexpo),
               data = train.data_freq, distribution = 'poisson', var.monotone = rep(0,12),
-              n.trees = 622, interaction.depth = 1, n.minobsinnode = 100, shrinkage = 0.1,
-              bag.fraction = 0.80, train.fraction = 0.5, cv.folds = 5)
+              n.trees = 1000, interaction.depth = 1, n.minobsinnode = 50, shrinkage = 0.1,
+              bag.fraction = 0.80, cv.folds = 5)
 
-summary(GB_freq, n.trees = 622)
-print(GB_freq, n.trees = 622)
-
+summary(GB_freq, n.trees = 1000)
+print(GB_freq, n.trees = 1000)
 
 # Partial Dependence Plot (PDP) for ageph
 PDP_ageph <- plot(GB_freq, i.var = 3, col = KULbg, main = "", type="response")
@@ -382,10 +382,10 @@ PDP_fuel
 
 # Let's predict the annual expected claim frequency for the test.data
 freq_prediction_GB <- (predict(GB_freq, newdata = test.data_freq, type = "response", 
-                        n.trees = 622))
+                        n.trees = 1000))
 
 # Compute the test error as a function of number of trees
-n.trees <- seq(from = 1, to = 622, by = 1) 
+n.trees <- seq(from = 1, to = 1000, by = 1) 
 predmatrix <- predict(GB_freq, test.data_freq, n.trees = n.trees, type = "response")
 
 # Calculating The Mean Squared Test Error
@@ -404,14 +404,13 @@ post_dt <- st_centroid(belgium_shape_sf)
 post_dt$long <- do.call(rbind, post_dt$geometry)[,1]
 post_dt$lat <- do.call(rbind, post_dt$geometry)[,2]
 
-# gbm with only spatial effects considered and derived optimal parameters
-# Best GB
+# gbm with only spatial effects considered and derived optimal parameters (after having applied the Hyper_grid approach)
 GB_freq_1 <- gbm(nbrtotc ~ lat+long+offset(lnexpo),
                  data = train.data_freq, distribution = 'poisson', var.monotone = rep(0,2),
-                 n.trees = 622, interaction.depth = 1, n.minobsinnode = 10, shrinkage = 0.01,
-                 bag.fraction = 0.65, train.fraction = 0.5, cv.folds = 5)
+                 n.trees = 1000, interaction.depth = 1, n.minobsinnode = 50, shrinkage = 0.1,
+                 bag.fraction = 1, cv.folds = 5)
 
-pred <- predict(GB_freq_1, newdata = post_dt, n.trees = 622, type = "response", ir.var = c(1,2))
+pred <- predict(GB_freq_1, newdata = post_dt, n.trees = 1000, type = "response", ir.var = c(1,2))
 
 dt_pred <- data.frame(pc = post_dt$POSTCODE,
                       long = post_dt$long,
@@ -431,10 +430,6 @@ ggplot(belgium_shape_sf) +
 
 #---------------------------- 4. Severity Modelling ------------------------------
 #---------------------------- 4.1 GLM ------------------------------
-set.seed(100)
-training.samples <- DB$nbrtotc %>% createDataPartition(p = 0.8, list = FALSE)
-train.data_freq  <- DB[training.samples, ]
-test.data_freq <- DB[-training.samples, ]
 
 train.data_sev <- train.data_freq %>% filter(chargtot > 0 & chargtot < 81000)
 train.data_freq %>% filter(chargtot > 0 & chargtot > 81000) # 18 observations exceeding the threshold
@@ -487,22 +482,17 @@ test_MSE_GLM_sev <- mean((log(test.data_sev$AvClAm) - log(sev_prediction_GLM)) ^
 
 #---------------------------- 4.2 Gradient Boosting ------------------------------
 
-# Let's tune the parameters
-
+## Let's tune the parameters
 #hyper_grid2 <- expand.grid(shrinkage = c(.01, .05 , .1), n.minobsinnode = c(10, 50, 100), bag.fraction = c(.65, .8, 1), 
 #                           optimal_trees = 0, min_cvMSE = 0)
 
-#random_index <- sample(1:nrow(train.data_freq), nrow(train.data_freq))
-#random_train <- train.data_freq[random_index, ]
 #for(i in 1:nrow(hyper_grid2)) {
-  
-  # reproducibility
-#  set.seed(100)
+#   set.seed(100)
 #  GB_sev <- gbm(log(AvClAm) ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp,
 #                data = train.data_sev, distribution = 'gaussian', var.monotone = rep(0,12),
 #                n.trees = 1000, interaction.depth = 1, n.minobsinnode = hyper_grid2$n.minobsinnode[i], shrinkage = hyper_grid2$shrinkage[i],
-#                bag.fraction = hyper_grid2$bag.fraction[i], train.fraction = 0.5, cv.folds = 5, n.cores = NULL)
-#  
+#                bag.fraction = hyper_grid2$bag.fraction[i], cv.folds = 5, n.cores = NULL)
+  
 #  hyper_grid2$optimal_trees[i] <- which.min(GB_sev$cv.error)
 #  hyper_grid2$min_cvMSE[i] <- (min(GB_sev$cv.error))
 #}
@@ -513,11 +503,11 @@ test_MSE_GLM_sev <- mean((log(test.data_sev$AvClAm) - log(sev_prediction_GLM)) ^
 set.seed(100)
 GB_sev <- gbm(log(AvClAm) ~ lat+long+ageph+agecar+usec+sexp+fuelc+split+fleetc+sportc+powerc+coverp,
               data = train.data_sev, distribution = 'gaussian', var.monotone = rep(0,12),
-              n.trees = 79, interaction.depth = 1, n.minobsinnode = 100, shrinkage = 0.1,
-              bag.fraction = 0.65, train.fraction = 0.5, cv.folds = 5, n.cores = NULL)
+              n.trees = 151, interaction.depth = 1, n.minobsinnode = 100, shrinkage = 0.1,
+              bag.fraction = 1, cv.folds = 5, n.cores = NULL)
 
-summary(GB_sev, n.trees = 79)
-print(GB_sev, n.trees = 79)
+summary(GB_sev, n.trees = 151)
+print(GB_sev, n.trees = 151)
 
 # Partial Dependence Plot (PDP) for ageph
 PDP_ageph <- plot(GB_sev, i.var = 3, lwd = 2, col = KULbg, main = "")
@@ -532,10 +522,10 @@ PDP_cover = plot(GB_sev, i.var = 12, lwd = 1, col = KULbg, main = "")
 PDP_cover
 
 # Let's predict the annual expected claim severity for the test.data
-sev_prediction_GB <- predict(GB_sev, newdata = test.data_sev, type = "response", n.trees = 79) 
+sev_prediction_GB <- predict(GB_sev, newdata = test.data_sev, type = "response", n.trees = 151) 
 
 # Compute the test error as a function of number of trees
-n.trees <- seq(from = 1, to = 79, by = 1) 
+n.trees <- seq(from = 1, to = 151, by = 1) 
 predmatrix <- predict(GB_sev, test.data_sev, n.trees = n.trees, type = "response")
 
 # Calculating The Mean Squared Test Error
@@ -548,4 +538,41 @@ plot(n.trees, test_MSE_GB_sev, pch=19, col=KULbg, xlab="Number of Trees", ylab="
 abline(h = min(test_MSE_GB_sev), col="red")
 legend("topright", c("Min. MSTE"), col="red", lty=1, lwd=1)
 
+# gbm with only spatial effects considered and derived optimal parameters
+GB_sev <- gbm(log(AvClAm) ~ lat+long,
+              data = train.data_sev, distribution = 'gaussian', var.monotone = rep(0,2),
+              n.trees = 61, interaction.depth = 1, n.minobsinnode = 100, shrinkage = 0.1,
+              bag.fraction = 1, cv.folds = 5, n.cores = NULL)
 
+pred_sev <- predict(GB_sev, newdata = post_dt, n.trees = 61, type = "response", ir.var = c(1,2))
+
+dt_pred <- data.frame(pc = post_dt$POSTCODE,
+                      long = post_dt$long,
+                      lat = post_dt$lat, pred_sev)
+names(dt_pred)[4] <- "fit_spatial"
+
+belgium_shape_sf <- left_join(belgium_shape_sf,
+                              dt_pred,
+                              by = c("POSTCODE" =
+                                       "pc"))
+ggplot(belgium_shape_sf) +
+  geom_sf(aes(fill = dt_pred$fit_spatial), colour = NA) +
+  ggtitle("Gradient Boosting machine - severity") +
+  scale_fill_gradient(low = "#99CCFF",
+                      high = "#003366") +
+  theme_bw()
+
+# --------------------------- 5. Tariff --------------------------------------
+set.seed(100)
+cases <- sample_n(test.data_freq, 10) %>% as_tibble()
+
+for(i in 1:nrow(cases)) {
+  cases$EACF_GLM[i] <- (predict(GLM_freq, cases[i,], type='response'))
+  cases$EACF_GBM[i] <- (predict(GB_freq, newdata = cases[i, ], type = "response", n.trees = 1000))
+  cases$ES_GLM[i] <- exp((predict(GLM_sev, cases[i, ], type='response')))
+  cases$ES_GBM[i] <- exp((predict(GB_sev, newdata = cases[i, ], type = "response", n.trees = 151)))
+  cases$Tariff_GLM[i] <- cases$EACF_GLM[i] * cases$ES_GLM[i]
+  cases$Tariff_GBM[i] <- cases$EACF_GBM[i] * cases$ES_GBM[i]
+  
+}
+cases
