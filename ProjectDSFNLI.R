@@ -564,7 +564,7 @@ ggplot(belgium_shape_sf) +
 
 # --------------------------- 5. Tariff --------------------------------------
 set.seed(100)
-cases <- sample_n(test.data_freq, 10) %>% as_tibble()
+cases <- sample_n(test.data_freq, 3) %>% as_tibble()
 
 for(i in 1:nrow(cases)) {
   cases$EACF_GLM[i] <- (predict(GLM_freq, cases[i,], type='response'))
